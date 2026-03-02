@@ -28,7 +28,7 @@ from src.labeling.functions import LABELING_FUNCTIONS
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Under the Hood | MarketPulse",
-    page_icon="🔬",
+    page_icon="M",
     layout="wide",
 )
 apply_theme()

@@ -24,7 +24,7 @@ from app.components.charts import sentiment_pie
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Ticker Detail | MarketPulse",
-    page_icon="🔍",
+    page_icon="M",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -34,12 +34,12 @@ apply_theme()
 # ---------------------------------------------------------------------------
 # Sidebar navigation
 # ---------------------------------------------------------------------------
-st.sidebar.title("📊 MarketPulse")
+st.sidebar.title("MarketPulse")
 st.sidebar.markdown("**Ticker Detail**")
 st.sidebar.markdown("---")
 
 if st.sidebar.button("Back to Overview", use_container_width=True):
-    st.switch_page("pages/1_Market_Overview.py")
+    st.switch_page("streamlit_app.py")
 
 # ---------------------------------------------------------------------------
 # Load pipeline data
@@ -77,7 +77,7 @@ if not ticker_options:
         "Return to **Market Overview** and make sure the pipeline has run."
     )
     if st.button("Go to Market Overview"):
-        st.switch_page("pages/1_Market_Overview.py")
+        st.switch_page("streamlit_app.py")
     st.stop()
 
 selected_company = st.selectbox(
@@ -256,7 +256,7 @@ back_col, _, next_col = st.columns([1, 6, 1])
 
 with back_col:
     if st.button("Back to Overview", key="back_footer"):
-        st.switch_page("pages/1_Market_Overview.py")
+        st.switch_page("streamlit_app.py")
 
 with next_col:
     if ticker_options:

@@ -26,7 +26,7 @@ from src.extraction.ticker_extractor import TickerExtractor
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Live Inference | MarketPulse",
-    page_icon="🎯",
+    page_icon="M",
     layout="wide",
 )
 apply_theme()
