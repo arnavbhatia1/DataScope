@@ -213,7 +213,7 @@ def coverage_heatmap(coverage_df, title="Labeling Function Coverage"):
 
     # Encode: abstain=0, bullish=1, bearish=2, neutral=3, meme=4
     label_encode = {'bullish': 1, 'bearish': 2, 'neutral': 3, 'meme': 4}
-    z = coverage_df.applymap(lambda v: label_encode.get(v, 0) if v else 0).values
+    z = coverage_df.map(lambda v: label_encode.get(v, 0) if v else 0).values
 
     fig = go.Figure(data=go.Heatmap(
         z=z.T,  # functions on y-axis, posts on x-axis

@@ -121,10 +121,25 @@ class TickerSentimentAnalyzer:
             sentiment_counts[data['dominant_sentiment']] += 1
             total_mentions += data['mention_count']
 
+        bullish_count = sentiment_counts.get('bullish', 0)
+        bearish_count = sentiment_counts.get('bearish', 0)
+        bullish_pct = bullish_count / total_tickers if total_tickers else 0
+        bearish_pct = bearish_count / total_tickers if total_tickers else 0
+
+        if bullish_count > bearish_count:
+            overall_sentiment = 'bullish'
+        elif bearish_count > bullish_count:
+            overall_sentiment = 'bearish'
+        else:
+            overall_sentiment = 'mixed'
+
         return {
             'total_tickers': total_tickers,
             'total_mentions': total_mentions,
             'ticker_sentiment_distribution': dict(sentiment_counts),
+            'overall_sentiment': overall_sentiment,
+            'bullish_pct': bullish_pct,
+            'bearish_pct': bearish_pct,
             'top_bullish': [
                 t for t in ticker_results.values()
                 if t['dominant_sentiment'] == 'bullish'
