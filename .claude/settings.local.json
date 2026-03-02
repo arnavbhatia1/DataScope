@@ -5,7 +5,10 @@
       "Bash(python:*)",
       "Bash(python3:*)",
       "Bash(pip3 install:*)",
-      "Bash(chmod +x:*)"
+      "Bash(chmod +x:*)",
+      "Bash(pip install:*)",
+      "Bash(timeout 10 streamlit run:*)",
+      "Bash(mdfind:*)"
     ]
   }
 }
