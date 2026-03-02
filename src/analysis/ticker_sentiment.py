@@ -1,0 +1,136 @@
+"""
+Per-Ticker Sentiment Aggregation
+
+Takes labeled + extracted DataFrame and produces per-ticker
+sentiment summaries for the dashboard.
+"""
+
+import pandas as pd
+from collections import Counter
+from src.extraction.ticker_extractor import TickerExtractor
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+SENTIMENT_COLORS = {
+    'bullish': '#00C853',
+    'bearish': '#FF1744',
+    'neutral': '#78909C',
+    'meme': '#FFD600',
+}
+
+
+class TickerSentimentAnalyzer:
+
+    def __init__(self):
+        self.extractor = TickerExtractor()
+        self._ticker_to_symbol = {}
+        for symbol, company in self.extractor.ticker_map.items():
+            if company not in self._ticker_to_symbol:
+                self._ticker_to_symbol[company] = symbol
+
+    def analyze(self, df):
+        """
+        Analyze per-ticker sentiment from labeled DataFrame.
+
+        Args:
+            df: DataFrame with 'text', 'programmatic_label',
+                'label_confidence' columns. 'tickers' column optional
+                (will extract if missing).
+
+        Returns:
+            dict mapping company name to ticker summary dict.
+        """
+        df = df.copy()
+
+        # Extract tickers if not already present
+        if 'tickers' not in df.columns:
+            df['tickers'] = df['text'].apply(self.extractor.extract)
+
+        # Only use labeled posts
+        labeled = df[df['programmatic_label'].notna()].copy()
+
+        ticker_data = {}
+
+        for _, row in labeled.iterrows():
+            tickers = row['tickers']
+            if not tickers or not isinstance(tickers, list):
+                continue
+
+            for company in tickers:
+                if company not in ticker_data:
+                    ticker_data[company] = {
+                        'company': company,
+                        'symbol': self._ticker_to_symbol.get(company, ''),
+                        'posts': [],
+                        'sentiments': [],
+                        'confidences': [],
+                    }
+
+                ticker_data[company]['posts'].append({
+                    'post_id': row.get('post_id', ''),
+                    'text': row['text'],
+                    'sentiment': row['programmatic_label'],
+                    'confidence': float(row.get('label_confidence', 0)),
+                    'source': row.get('source', 'unknown'),
+                    'timestamp': str(row.get('timestamp', '')),
+                    'author': row.get('author', 'unknown'),
+                })
+                ticker_data[company]['sentiments'].append(row['programmatic_label'])
+                ticker_data[company]['confidences'].append(
+                    float(row.get('label_confidence', 0))
+                )
+
+        # Build summaries
+        results = {}
+        for company, data in ticker_data.items():
+            sentiment_counts = Counter(data['sentiments'])
+            total = len(data['sentiments'])
+            dominant = sentiment_counts.most_common(1)[0][0] if total > 0 else 'neutral'
+
+            results[company] = {
+                'company': company,
+                'symbol': data['symbol'],
+                'mention_count': total,
+                'sentiment': dict(sentiment_counts),
+                'dominant_sentiment': dominant,
+                'dominant_color': SENTIMENT_COLORS.get(dominant, '#78909C'),
+                'bullish_ratio': sentiment_counts.get('bullish', 0) / total if total > 0 else 0,
+                'bearish_ratio': sentiment_counts.get('bearish', 0) / total if total > 0 else 0,
+                'avg_confidence': sum(data['confidences']) / len(data['confidences']) if data['confidences'] else 0,
+                'posts': sorted(data['posts'], key=lambda p: p['confidence'], reverse=True),
+            }
+
+        # Sort by mention count
+        results = dict(sorted(results.items(), key=lambda x: x[1]['mention_count'], reverse=True))
+
+        logger.info(f"Ticker analysis: {len(results)} tickers found across {len(labeled)} labeled posts")
+        return results
+
+    def get_market_summary(self, ticker_results):
+        """
+        Aggregate market-level summary from ticker results.
+
+        Returns dict with overall sentiment distribution across tickers.
+        """
+        sentiment_counts = Counter()
+        total_mentions = 0
+        total_tickers = len(ticker_results)
+
+        for company, data in ticker_results.items():
+            sentiment_counts[data['dominant_sentiment']] += 1
+            total_mentions += data['mention_count']
+
+        return {
+            'total_tickers': total_tickers,
+            'total_mentions': total_mentions,
+            'ticker_sentiment_distribution': dict(sentiment_counts),
+            'top_bullish': [
+                t for t in ticker_results.values()
+                if t['dominant_sentiment'] == 'bullish'
+            ][:5],
+            'top_bearish': [
+                t for t in ticker_results.values()
+                if t['dominant_sentiment'] == 'bearish'
+            ][:5],
+        }
