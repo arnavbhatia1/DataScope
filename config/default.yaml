@@ -33,13 +33,13 @@ ingestion:
 
 labeling:
   aggregation_strategy: "confidence_weighted"  # "majority" | "weighted" | "confidence_weighted"
-  confidence_threshold: 0.6
-  min_votes: 2
+  confidence_threshold: 0.35
+  min_votes: 1
 
 model:
   max_features: 500
   ngram_range: [1, 2]
-  min_df: 3
+  min_df: 2
   C: 1.0
   class_weight: "balanced"
   test_size: 0.2

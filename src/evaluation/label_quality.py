@@ -65,23 +65,19 @@ def run_thesis_experiment(df_programmatic, df_gold, config=None):
         'labels': gold_train['sentiment_gold'].tolist(),
     }
 
-    # 2. Programmatic labels -- match gold_train post_ids
-    prog_merged = gold_train.merge(
-        df_programmatic[['post_id', 'programmatic_label']].dropna(subset=['programmatic_label']),
-        on='post_id', how='inner'
-    )
-    if len(prog_merged) >= 10:
-        train_sets['programmatic'] = {
-            'texts': prog_merged['text'].tolist(),
-            'labels': prog_merged['programmatic_label'].tolist(),
-        }
-    else:
-        # Fallback: use all programmatic labeled data
-        prog_labeled = df_programmatic[df_programmatic['programmatic_label'].notna()]
-        train_sets['programmatic'] = {
-            'texts': prog_labeled['text'].tolist(),
-            'labels': prog_labeled['programmatic_label'].tolist(),
-        }
+    # 2. Programmatic labels -- use ALL programmatic labeled data.
+    # In production you train on everything the pipeline labels, not just
+    # gold-overlapping posts.  This makes the comparison realistic:
+    # gold/noisy/random get gold_train texts; programmatic gets its full pool.
+    prog_labeled = df_programmatic[df_programmatic['programmatic_label'].notna()]
+    # Exclude gold_test posts to prevent data leakage
+    if 'post_id' in prog_labeled.columns and 'post_id' in gold_test.columns:
+        test_ids = set(gold_test['post_id'].tolist())
+        prog_labeled = prog_labeled[~prog_labeled['post_id'].isin(test_ids)]
+    train_sets['programmatic'] = {
+        'texts': prog_labeled['text'].tolist(),
+        'labels': prog_labeled['programmatic_label'].tolist(),
+    }
     logger.info(f"Programmatic training set: {len(train_sets['programmatic']['texts'])} samples")
 
     # 3. Noisy labels -- flip 30% of gold train labels randomly
@@ -107,10 +103,14 @@ def run_thesis_experiment(df_programmatic, df_gold, config=None):
     results = []
     per_class_all = {}
 
+    # Use min_df=1 for thesis experiment -- training sets are small
+    thesis_model_config = dict(model_config)
+    thesis_model_config['min_df'] = 1
+
     for source_name, data in train_sets.items():
         logger.info(f"\nTraining on {source_name} labels ({len(data['texts'])} samples)...")
 
-        pipeline = SentimentPipeline(model_config)
+        pipeline = SentimentPipeline(thesis_model_config)
 
         try:
             pipeline.train(data['texts'], data['labels'], validation_split=False)
