@@ -52,7 +52,10 @@ if model is None:
     st.stop()
 
 with st.spinner("Loading pipeline data..."):
-    data = run_pipeline()
+    data = run_pipeline(
+        start_date_str=st.session_state.get("start_date"),
+        end_date_str=st.session_state.get("end_date"),
+    )
 
 df = data.get("df", pd.DataFrame())
 

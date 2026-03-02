@@ -46,7 +46,10 @@ if st.sidebar.button("Back to Overview", use_container_width=True):
 # ---------------------------------------------------------------------------
 with st.spinner("Loading pipeline data..."):
     try:
-        data = run_pipeline()
+        data = run_pipeline(
+            start_date_str=st.session_state.get("start_date"),
+            end_date_str=st.session_state.get("end_date"),
+        )
     except Exception as e:
         st.error(
             "Pipeline failed to run. Make sure dependencies are installed "

@@ -27,12 +27,16 @@ from src.models.pipeline import SentimentPipeline
 
 
 @st.cache_data(ttl=300)
-def run_pipeline():
+def run_pipeline(start_date_str=None, end_date_str=None):
     """
     Run the full MarketPulse pipeline and return all results.
 
     Cached for 5 minutes (ttl=300). Re-runs automatically after expiry
     or when the user manually clears the cache via st.cache_data.clear().
+
+    Args:
+        start_date_str: ISO date string (YYYY-MM-DD) or None for default.
+        end_date_str: ISO date string (YYYY-MM-DD) or None for default.
 
     Returns:
         dict with keys:
@@ -42,11 +46,16 @@ def run_pipeline():
             'source_summary' -- ingestion source stats dict
             'config'         -- loaded config dict
     """
+    from datetime import datetime
+
     config = load_config()
+
+    start_date = datetime.fromisoformat(start_date_str) if start_date_str else None
+    end_date = datetime.fromisoformat(end_date_str) if end_date_str else None
 
     # --- Ingestion ---
     mgr = IngestionManager(config)
-    df = mgr.ingest()
+    df = mgr.ingest(start_date=start_date, end_date=end_date)
     source_summary = mgr.get_source_summary()
 
     # --- Labeling ---

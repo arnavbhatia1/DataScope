@@ -8,6 +8,7 @@ Run with:
 import streamlit as st
 import sys
 import os
+from datetime import date, timedelta
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
@@ -33,6 +34,30 @@ st.sidebar.title("MarketPulse")
 st.sidebar.markdown("**Sentiment Intelligence for Financial Markets**")
 st.sidebar.markdown("---")
 
+# Date range picker (max 30 days back for NewsAPI free tier)
+_today = date.today()
+_min_date = _today - timedelta(days=30)
+
+start_date = st.sidebar.date_input(
+    "Start date",
+    value=_today - timedelta(days=7),
+    min_value=_min_date,
+    max_value=_today,
+)
+end_date = st.sidebar.date_input(
+    "End date",
+    value=_today,
+    min_value=_min_date,
+    max_value=_today,
+)
+
+if start_date > end_date:
+    st.sidebar.error("Start date must be before end date.")
+
+# Store dates in session state so other pages can read them.
+st.session_state["start_date"] = start_date.isoformat()
+st.session_state["end_date"] = end_date.isoformat()
+
 if st.sidebar.button("Refresh Data", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
@@ -46,7 +71,10 @@ try:
     from app.pipeline_runner import run_pipeline
 
     with st.spinner("Analyzing market sentiment..."):
-        data = run_pipeline()
+        data = run_pipeline(
+            start_date_str=st.session_state.get("start_date"),
+            end_date_str=st.session_state.get("end_date"),
+        )
 
     df = data['df']
     ticker_results = data['ticker_results']
