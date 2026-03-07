@@ -32,8 +32,9 @@ SAMPLE_TICKER_DATA = {
 }
 
 
-def test_generate_briefing_returns_string():
-    """generate_briefing returns a non-empty string."""
+def test_generate_briefing_returns_string(monkeypatch):
+    """generate_briefing returns the Claude response text."""
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key')
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="Tesla sentiment has turned bearish this week.")]
 
@@ -45,12 +46,12 @@ def test_generate_briefing_returns_string():
         from src.agent.briefing import generate_briefing
         result = generate_briefing('Tesla', 'TSLA', SAMPLE_TICKER_DATA)
 
-    assert isinstance(result, str)
-    assert len(result) > 10
+    assert result == "Tesla sentiment has turned bearish this week."
 
 
-def test_generate_briefing_calls_claude_once():
+def test_generate_briefing_calls_claude_once(monkeypatch):
     """Only one API call per briefing."""
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key')
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="Some verdict.")]
 
@@ -59,23 +60,17 @@ def test_generate_briefing_calls_claude_once():
         mock_client_cls.return_value = mock_client
         mock_client.messages.create.return_value = mock_response
 
-        import importlib
-        import src.agent.briefing as briefing_mod
-        importlib.reload(briefing_mod)
-        briefing_mod.generate_briefing('Tesla', 'TSLA', SAMPLE_TICKER_DATA)
+        from src.agent.briefing import generate_briefing
+        generate_briefing('Tesla', 'TSLA', SAMPLE_TICKER_DATA)
 
     assert mock_client.messages.create.call_count == 1
 
 
-def test_generate_briefing_no_api_key():
-    """Returns fallback string when Claude is unavailable."""
-    with patch('src.agent.briefing.anthropic.Anthropic') as mock_client_cls:
-        mock_client_cls.side_effect = Exception("No API key")
+def test_generate_briefing_no_api_key(monkeypatch):
+    """Returns fallback string when ANTHROPIC_API_KEY is missing."""
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
 
-        import importlib
-        import src.agent.briefing as briefing_mod
-        importlib.reload(briefing_mod)
-        result = briefing_mod.generate_briefing('Tesla', 'TSLA', SAMPLE_TICKER_DATA)
+    from src.agent.briefing import generate_briefing, _FALLBACK
+    result = generate_briefing('Tesla', 'TSLA', SAMPLE_TICKER_DATA)
 
-    assert isinstance(result, str)
-    assert len(result) > 0  # fallback, not empty
+    assert result == _FALLBACK

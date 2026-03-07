@@ -6,9 +6,12 @@ All charts, stats, and post samples come from SQLite — Claude is narrative onl
 """
 
 import json
+import logging
 import os
 
 import anthropic
+
+logger = logging.getLogger(__name__)
 
 _FALLBACK = (
     "Sentiment data has been aggregated from Reddit, Stocktwits, and financial news. "
@@ -28,16 +31,24 @@ def generate_briefing(company: str, ticker: str, ticker_data: dict) -> str:
     Returns:
         2-3 sentence verdict string. Returns a safe fallback if Claude unavailable.
     """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.warning("ANTHROPIC_API_KEY not set; returning fallback for %s/%s", ticker, company)
+        return _FALLBACK
     try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        client = anthropic.Anthropic(api_key=api_key)
         prompt = _build_prompt(company, ticker, ticker_data)
         message = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=150,
             messages=[{"role": "user", "content": prompt}],
         )
+        if not message.content:
+            logger.warning("Claude returned empty content for %s/%s", ticker, company)
+            return _FALLBACK
         return message.content[0].text.strip()
-    except Exception:
+    except Exception as exc:
+        logger.warning("Claude briefing unavailable for %s/%s: %s", ticker, company, exc)
         return _FALLBACK
 
 
