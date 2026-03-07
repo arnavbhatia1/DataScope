@@ -182,6 +182,7 @@ def load_ticker_cache() -> dict:
         d = dict(row)
         d['sentiment_by_day'] = _safe_json(d.get('sentiment_by_day'), {})
         d['top_posts'] = _safe_json(d.get('top_posts'), {})
+        d['company'] = d['ticker']  # canonical company name == ticker key
         result[d['ticker']] = d
     return result
 

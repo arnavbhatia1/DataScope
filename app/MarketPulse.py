@@ -43,9 +43,10 @@ if start_date > end_date:
 st.session_state["start_date"] = start_date.isoformat()
 st.session_state["end_date"] = end_date.isoformat()
 
+from app.pipeline_runner import refresh_pipeline, load_model, get_ticker_cache
+
 if st.sidebar.button("Refresh Data", use_container_width=True):
     with st.spinner("Ingesting and analyzing market data..."):
-        from app.pipeline_runner import refresh_pipeline
         source_summary = refresh_pipeline(
             start_date_str=start_date.isoformat(),
             end_date_str=end_date.isoformat(),
@@ -54,7 +55,6 @@ if st.sidebar.button("Refresh Data", use_container_width=True):
     st.rerun()
 
 # Model status
-from app.pipeline_runner import load_model, get_ticker_cache
 from src.storage.db import init_db, get_training_history
 
 init_db()
@@ -148,24 +148,20 @@ if search_clicked and query.strip():
             import plotly.graph_objects as go
 
             days = sorted(by_day.keys())
+            bar_colors = [SENTIMENT_COLORS.get(by_day[d], COLORS['secondary']) for d in days]
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
+            fig = go.Figure(go.Bar(
                 x=days,
-                y=[1 if by_day[d] == 'bullish' else 0 for d in days],
-                name='Bullish', mode='lines+markers',
-                line=dict(color=SENTIMENT_COLORS['bullish'])
-            ))
-            fig.add_trace(go.Scatter(
-                x=days,
-                y=[1 if by_day[d] == 'bearish' else 0 for d in days],
-                name='Bearish', mode='lines+markers',
-                line=dict(color=SENTIMENT_COLORS['bearish'])
+                y=[1] * len(days),
+                marker_color=bar_colors,
+                text=[by_day[d] for d in days],
+                textposition='inside',
             ))
             fig.update_layout(
-                template='plotly_dark', height=200,
+                template='plotly_dark', height=160,
                 margin=dict(l=0, r=0, t=0, b=0),
-                showlegend=True,
+                showlegend=False,
+                yaxis=dict(visible=False),
             )
             st.plotly_chart(fig, use_container_width=True)
 
