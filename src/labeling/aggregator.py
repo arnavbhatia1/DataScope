@@ -36,9 +36,6 @@ FUNCTION_WEIGHTS = {
     'lf_reddit_flair': 1.5,
 }
 
-# Priority for tie-breaking (lower index = higher priority)
-TIE_PRIORITY = ['neutral', 'bullish', 'bearish', 'meme']
-
 
 def _parse_metadata(metadata):
     """Safely parse metadata from string to dict if needed."""
@@ -113,13 +110,8 @@ class LabelAggregator:
         label_counts = Counter(active_votes.values())
         has_conflict = len(label_counts) > 1
 
-        # Apply chosen strategy
-        if self.strategy == "majority":
-            final_label, confidence = self._majority_vote(active_votes)
-        elif self.strategy == "weighted":
-            final_label, confidence = self._weighted_vote(active_votes)
-        else:  # confidence_weighted
-            final_label, confidence = self._confidence_weighted(active_votes)
+        # Apply confidence-weighted strategy
+        final_label, confidence = self._confidence_weighted(active_votes)
 
         # Enforce min_votes
         if num_votes < self.min_votes:
@@ -161,21 +153,6 @@ class LabelAggregator:
                      f"({labeled_count/len(df):.1%} coverage)")
 
         return df
-
-    def _majority_vote(self, active_votes):
-        """Most common non-abstain label wins. Ties broken by priority."""
-        label_counts = Counter(active_votes.values())
-        max_count = max(label_counts.values())
-        tied = [label for label, count in label_counts.items() if count == max_count]
-
-        if len(tied) == 1:
-            winner = tied[0]
-        else:
-            # Break tie by priority
-            winner = min(tied, key=lambda x: TIE_PRIORITY.index(x) if x in TIE_PRIORITY else 99)
-
-        confidence = max_count / sum(label_counts.values())
-        return winner, confidence
 
     def _weighted_vote(self, active_votes):
         """

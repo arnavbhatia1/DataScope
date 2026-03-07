@@ -5,45 +5,35 @@ Financial sentiment hub that tracks market mood across Reddit, Stocktwits, and f
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Copy and fill in your API keys
-cp .env.example .env
-# edit .env with your keys (see API Keys section below)
-
-# 3. Launch the dashboard
+cp .env.example .env          # add your API keys (see below)
 streamlit run app/MarketPulse.py
 ```
 
-Opens at **http://localhost:8501**. On first load the market grid is empty — click **Refresh Data** in the sidebar to ingest and analyze posts (~30 seconds).
+Opens at **http://localhost:8501**. Click **Refresh Data** in the sidebar to ingest and analyze posts (~30 seconds).
 
 ## API Keys
 
-News is ingested for free via RSS (no key needed). Reddit and Stocktwits are optional extras. Without `ANTHROPIC_API_KEY` the AI Verdict shows a static fallback.
-
 | Key | What it enables | Where to get it |
-|-----|----------------|-----------------|
-| `ANTHROPIC_API_KEY` | AI Verdict on briefing cards | [console.anthropic.com](https://console.anthropic.com) → API Keys |
+|-----|----------------|--------------------|
+| `ANTHROPIC_API_KEY` | AI verdict on briefing cards | [console.anthropic.com](https://console.anthropic.com) → API Keys |
 | `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` | Reddit/WSB posts | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) → create script app |
 | `STOCKTWITS_ACCESS_TOKEN` | Stocktwits messages | [api.stocktwits.com/developers](https://api.stocktwits.com/developers) |
 
-**News is scraped for free** via Google News RSS and Yahoo Finance RSS — no API key needed.
-
-Set these in your `.env` file (copied from `.env.example`). The app loads it automatically on startup.
+**News is always free** — scraped from Google News RSS and Yahoo Finance RSS, no key needed. The app works without any keys (AI verdict falls back to a static summary).
 
 ## How It Works
 
 ```
 Ingest (Reddit + Stocktwits + free News RSS)
         ↓
-Keyword majority vote → training labels
+16 keyword/emoji labeling functions → confidence-weighted vote
         ↓
 TF-IDF + LogReg classifies all posts (auto-trains when enough data)
         ↓
-Posts + per-ticker summaries saved to SQLite (data/marketpulse.db)
+Posts + per-ticker summaries saved to SQLite
         ↓
-Home page grid reads from SQLite (instant)
+Home grid reads from SQLite (instant load)
 User searches ticker → Claude writes 2-3 sentence verdict → briefing card
 ```
 
@@ -62,12 +52,11 @@ MarketPulse/
 ├── app/
 │   ├── MarketPulse.py          # Home page: search bar + market grid
 │   ├── pipeline_runner.py      # refresh_pipeline(), get_ticker_cache(), load_model()
-│   ├── pages/
-│   │   └── 1_Ticker_Detail.py  # Deep-dive page for a single ticker
-│   └── components/             # Charts, metrics, CSS styles
+│   └── pages/
+│       └── 1_Ticker_Detail.py  # Deep-dive page for a single ticker
 ├── src/
-│   ├── ingestion/              # Reddit, Stocktwits, NewsAPI, Synthetic
-│   ├── labeling/               # 16 keyword/emoji/options labeling functions
+│   ├── ingestion/              # Reddit, Stocktwits, News RSS ingesters
+│   ├── labeling/               # 16 labeling functions + confidence-weighted aggregator
 │   ├── models/                 # TF-IDF + LogReg training pipeline
 │   ├── extraction/             # Ticker entity extraction + normalization
 │   ├── analysis/               # Per-ticker sentiment aggregation
@@ -75,14 +64,17 @@ MarketPulse/
 │   └── agent/briefing.py       # Claude synthesis — one API call per search
 ├── scripts/run_pipeline.py     # CLI: full pipeline end-to-end
 ├── config/default.yaml         # Data sources, model hyperparameters
-└── tests/                      # 164 tests
+└── tests/                      # 158 tests
 ```
 
 ## CLI
 
 ```bash
-# Full pipeline (ingest → label → train → analyze → SQLite)
+# Full pipeline (ingest → label → analyze → store → train)
 python scripts/run_pipeline.py
+
+# With custom lookback
+python scripts/run_pipeline.py --days 14
 
 # Tests
 pytest tests/ -v
@@ -90,4 +82,4 @@ pytest tests/ -v
 
 ## Tech Stack
 
-Python 3.9+ · Streamlit · scikit-learn · Plotly · Anthropic SDK · SQLite · PRAW · pandas
+Python 3.9+ · Streamlit · scikit-learn · Plotly · Anthropic SDK · SQLite · feedparser · PRAW · pandas

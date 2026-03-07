@@ -16,8 +16,7 @@ def source_status_indicator(sources_used, sources_unavailable):
     all_sources = {
         'reddit': 'Reddit',
         'stocktwits': 'Stocktwits',
-        'news': 'News',
-        'synthetic': 'Synthetic',
+        'news': 'News (RSS)',
     }
     for key, name in all_sources.items():
         if key in sources_used:
@@ -98,20 +97,3 @@ def model_status_card(model_pipeline):
     return True
 
 
-def labeling_quality_row(quality_report):
-    """
-    Display core labeling quality KPIs.
-
-    Args:
-        quality_report: dict from LabelQualityAnalyzer.aggregate_quality_report()
-    """
-    coverage = quality_report.get('total_coverage', 0)
-    conflict = quality_report.get('conflict_rate', 0)
-    avg_votes = quality_report.get('avg_votes_per_post', 0)
-    uncertain = quality_report.get('uncertain_count', 0)
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Label Coverage", f"{coverage:.1%}")
-    col2.metric("Conflict Rate", f"{conflict:.1%}")
-    col3.metric("Avg Votes / Post", f"{avg_votes:.1f}")
-    col4.metric("Uncertain Posts", f"{uncertain:,}")
