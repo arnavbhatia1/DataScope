@@ -15,7 +15,7 @@ _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from app.pipeline_runner import run_pipeline
+from app.pipeline_runner import get_ticker_cache
 from app.components.styles import apply_theme, COLORS, SENTIMENT_COLORS
 from app.components.charts import sentiment_pie
 
@@ -46,20 +46,20 @@ if st.sidebar.button("Back to Overview", use_container_width=True):
 # ---------------------------------------------------------------------------
 with st.spinner("Loading pipeline data..."):
     try:
-        data = run_pipeline(
-            start_date_str=st.session_state.get("start_date"),
-            end_date_str=st.session_state.get("end_date"),
-        )
+        ticker_results = get_ticker_cache()
     except Exception as e:
         st.error(
-            "Pipeline failed to run. Make sure dependencies are installed "
-            "and at least synthetic data is available."
+            "Failed to load pipeline data. Make sure the pipeline has run at least once."
         )
         st.caption(f"Technical detail: {e}")
         st.stop()
 
-df = data["df"]
-ticker_results = data["ticker_results"]
+# Build a lightweight posts DataFrame from SQLite for evidence display.
+from src.storage.db import load_posts
+try:
+    df = load_posts()
+except Exception:
+    df = pd.DataFrame()
 
 # ---------------------------------------------------------------------------
 # Ticker selection

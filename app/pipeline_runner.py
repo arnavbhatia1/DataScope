@@ -57,7 +57,6 @@ def refresh_pipeline(start_date_str=None, end_date_str=None) -> dict:
 
     # Map programmatic_label → sentiment column for storage
     df['sentiment'] = df['programmatic_label']
-    df['confidence'] = df.get('label_confidence', 0.0)
     if 'label_confidence' in df.columns:
         df['confidence'] = df['label_confidence'].fillna(0.0)
     else:
@@ -87,7 +86,6 @@ def get_ticker_cache() -> dict:
     return load_ticker_cache()
 
 
-@st.cache_data(ttl=60)
 def get_market_summary(ticker_results: dict) -> dict:
     """Compute market-level summary from ticker_results."""
     from src.analysis.ticker_sentiment import TickerSentimentAnalyzer
@@ -135,7 +133,11 @@ def _maybe_train_model(df, config, min_samples=200):
     )
     pipeline.save(os.path.join(_root, "data", "models"))
 
-    f1 = report.get('weighted_f1', 0.0) if report else 0.0
+    f1 = 0.0
+    if report:
+        val = report.get('validation_metrics') or report.get('training_metrics')
+        if val:
+            f1 = val.get('weighted_f1', 0.0)
     log_training_run(
         run_id=str(uuid.uuid4()),
         num_samples=len(labeled),
