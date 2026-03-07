@@ -37,18 +37,19 @@ marketpulse/
 ├── src/
 │   ├── ingestion/   base.py, reddit.py, stocktwits.py, news.py, synthetic.py, manager.py
 │   ├── labeling/    functions.py, aggregator.py, quality.py
-│   ├── models/      pipeline.py, versioning.py
+│   ├── models/      pipeline.py
 │   ├── extraction/  ticker_extractor.py, normalizer.py
-│   ├── evaluation/  classification.py, extraction.py, label_quality.py
+│   ├── storage/     db.py                # SQLite read/write layer
+│   ├── agent/       briefing.py          # Claude synthesis
 │   └── utils/       config.py, logger.py, cache.py
 ├── app/
 │   ├── streamlit_app.py
-│   ├── pages/  1_data_ingestion.py, 2_labeling_studio.py, 3_label_quality.py,
-│   │           4_model_training.py, 5_entity_extraction.py, 6_evaluation.py, 7_live_inference.py
+│   ├── pages/  1_Ticker_Detail.py
 │   └── components/  charts.py, metrics.py, styles.py
 ├── scripts/  ingest.py, label.py, train.py, evaluate.py, run_pipeline.py
 └── tests/    test_ingestion.py, test_labeling_functions.py, test_aggregator.py,
-              test_pipeline.py, test_extraction.py, test_normalizer.py, test_evaluation.py
+              test_pipeline.py, test_extraction.py, test_normalizer.py,
+              test_db.py, test_briefing.py, test_ticker_sentiment.py
 ```
 
 ---
