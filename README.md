@@ -6,11 +6,11 @@ Financial sentiment hub that tracks market mood across Reddit, Stocktwits, and f
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env          # add your API keys (see below)
-streamlit run app/MarketPulse.py
+cp .env.example .env  # add your API keys (see below)
+python3 start.py
 ```
 
-Opens at **http://localhost:8501**. Click **Refresh Data** in the sidebar to ingest and analyze posts (~30 seconds).
+Opens at **http://localhost:8501** after the pipeline finishes (~30 seconds).
 
 ## API Keys
 
@@ -71,13 +71,13 @@ MarketPulse/
 
 ```bash
 # Full pipeline (ingest → label → analyze → store → train)
-python scripts/run_pipeline.py
+python3 scripts/run_pipeline.py
 
 # With custom lookback
-python scripts/run_pipeline.py --days 14
+python3 scripts/run_pipeline.py --days 14
 
 # Tests
-pytest tests/ -v
+python3 -m pytest tests/ -v
 ```
 
 ## Tech Stack

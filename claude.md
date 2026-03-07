@@ -190,15 +190,15 @@ News is free via RSS — no key needed.
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # add your keys
-streamlit run app/MarketPulse.py
+python3 -m streamlit run app/MarketPulse.py
 ```
 
 ## Running the CLI Pipeline
 
 ```bash
-python scripts/run_pipeline.py           # 7-day lookback
-python scripts/run_pipeline.py --days 30 # 30-day lookback
-pytest tests/ -v                         # run all 158 tests
+python3 scripts/run_pipeline.py           # 7-day lookback
+python3 scripts/run_pipeline.py --days 30 # 30-day lookback
+python3 -m pytest tests/ -v               # run all 158 tests
 ```
 
 ---
