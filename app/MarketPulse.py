@@ -1,22 +1,19 @@
 """
-MarketPulse Dashboard -- Main Entry Point
+MarketPulse — Financial Sentiment Hub
 
-Run with:
-    streamlit run app/MarketPulse.py
+Run: streamlit run app/MarketPulse.py
 """
 
 import streamlit as st
-import sys
-import os
+import sys, os, json
 from datetime import date, timedelta
 
-_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from app.components.styles import apply_theme, COLORS, SENTIMENT_COLORS
 from app.components.charts import ticker_mentions_bar
-from app.components.metrics import source_status_indicator
 
 st.set_page_config(
     page_title="MarketPulse",
@@ -24,211 +21,220 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 apply_theme()
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 st.sidebar.title("MarketPulse")
-st.sidebar.markdown("**Sentiment Intelligence for Financial Markets**")
+st.sidebar.markdown("**Sentiment intelligence for financial markets**")
 st.sidebar.markdown("---")
 
-# Date range picker (max 30 days back for NewsAPI free tier)
 _today = date.today()
-_min_date = _today - timedelta(days=30)
-
 start_date = st.sidebar.date_input(
-    "Start date",
-    value=_today - timedelta(days=7),
-    min_value=_min_date,
-    max_value=_today,
+    "Start date", value=_today - timedelta(days=7),
+    min_value=_today - timedelta(days=30), max_value=_today,
 )
 end_date = st.sidebar.date_input(
-    "End date",
-    value=_today,
-    min_value=_min_date,
-    max_value=_today,
+    "End date", value=_today,
+    min_value=_today - timedelta(days=30), max_value=_today,
 )
-
 if start_date > end_date:
     st.sidebar.error("Start date must be before end date.")
 
-# Store dates in session state so other pages can read them.
 st.session_state["start_date"] = start_date.isoformat()
 st.session_state["end_date"] = end_date.isoformat()
 
 if st.sidebar.button("Refresh Data", use_container_width=True):
-    st.cache_data.clear()
+    with st.spinner("Ingesting and analyzing market data..."):
+        from app.pipeline_runner import refresh_pipeline
+        source_summary = refresh_pipeline(
+            start_date_str=start_date.isoformat(),
+            end_date_str=end_date.isoformat(),
+        )
+        st.cache_data.clear()
     st.rerun()
+
+# Model status
+from app.pipeline_runner import load_model, get_ticker_cache
+from src.storage.db import init_db, get_training_history
+
+init_db()
+model = load_model()
+if model and model.is_trained:
+    history = get_training_history()
+    f1 = history[0]['weighted_f1'] if history else 0.0
+    st.sidebar.success(f"Model trained (F1: {f1:.2f})")
+else:
+    st.sidebar.info("Keyword fallback active (model not yet trained)")
 
 st.sidebar.markdown("---")
 
-# ---------------------------------------------------------------------------
-# Load pipeline data
-# ---------------------------------------------------------------------------
-try:
-    from app.pipeline_runner import run_pipeline
+# ── Load ticker cache ─────────────────────────────────────────────────────────
+ticker_results = get_ticker_cache()
 
-    with st.spinner("Analyzing market sentiment..."):
-        data = run_pipeline(
-            start_date_str=st.session_state.get("start_date"),
-            end_date_str=st.session_state.get("end_date"),
-        )
-
-    df = data['df']
-    ticker_results = data['ticker_results']
-    market_summary = data['market_summary']
-    source_summary = data['source_summary']
-
-except Exception as e:
-    st.title("MarketPulse")
-    st.warning(
-        "Run the pipeline first to load data:\n\n"
-        "```\npython3 scripts/run_pipeline.py\n```\n\n"
-        "Then refresh this page."
-    )
-    st.caption(f"({e})")
-    st.stop()
-
-# Sidebar source status
-source_status_indicator(
-    sources_used=source_summary.get("sources_used", []),
-    sources_unavailable=source_summary.get("sources_unavailable", []),
-)
-
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
+# ── Header ───────────────────────────────────────────────────────────────────
 st.title("MarketPulse")
-st.markdown(
-    "Real-time sentiment intelligence for financial markets. "
-    "See which tickers are **bullish**, **bearish**, or drowning in **memes** "
-    "— backed by ML analysis of social media posts."
-)
-
+st.markdown("Sentiment intelligence for financial markets.")
 st.markdown("---")
 
-# ---------------------------------------------------------------------------
-# Top KPI metrics
-# ---------------------------------------------------------------------------
-total_posts = len(df)
-tickers_tracked = len(ticker_results)
-
-labeled_count = df['programmatic_label'].notna().sum() if 'programmatic_label' in df.columns else 0
-coverage_pct = labeled_count / total_posts if total_posts > 0 else 0.0
-
-sources_used = source_summary.get("sources_used", [])
-data_source_display = ", ".join(sources_used).upper() if sources_used else "NONE"
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Posts Analyzed", f"{total_posts:,}")
-c2.metric("Tickers Tracked", f"{tickers_tracked:,}")
-c3.metric("Labeling Coverage", f"{coverage_pct:.1%}")
-c4.metric("Data Source", data_source_display)
-
-st.markdown("---")
-
-# ---------------------------------------------------------------------------
-# Market snapshot — sentiment counts
-# ---------------------------------------------------------------------------
-st.markdown("### Market Snapshot")
-
-dist = market_summary.get('ticker_sentiment_distribution', {})
-scols = st.columns(4)
-for i, sentiment in enumerate(['bullish', 'bearish', 'neutral', 'meme']):
-    count = dist.get(sentiment, 0)
-    color = SENTIMENT_COLORS.get(sentiment, '#78909C')
-    scols[i].markdown(
-        f"<div style='text-align:center;'>"
-        f"<div style='font-size:2em; font-weight:bold; color:{color};'>{count}</div>"
-        f"<div style='color:#8B949E;'>{sentiment.upper()} tickers</div>"
-        f"</div>",
-        unsafe_allow_html=True,
+# ── Search bar (PRIMARY) ──────────────────────────────────────────────────────
+col_input, col_btn = st.columns([5, 1])
+with col_input:
+    query = st.text_input(
+        label="Research a ticker",
+        placeholder="TSLA, NVDA, AAPL...",
+        label_visibility="collapsed",
     )
+with col_btn:
+    search_clicked = st.button("Research", use_container_width=True)
 
-st.markdown("---")
+# ── Briefing card (inline, below search) ─────────────────────────────────────
+if search_clicked and query.strip():
+    from src.extraction.normalizer import EntityNormalizer
+    from src.agent.briefing import generate_briefing
 
-# ---------------------------------------------------------------------------
-# Ticker card grid
-# ---------------------------------------------------------------------------
+    normalizer = EntityNormalizer()
+
+    # Resolve query to canonical company name
+    resolved = normalizer.normalize(query.strip())
+    ticker_data = ticker_results.get(resolved)
+
+    # Fallback: try symbol lookup
+    if not ticker_data:
+        symbol_upper = query.strip().upper()
+        for company, data in ticker_results.items():
+            if data.get('symbol', '').upper() == symbol_upper:
+                ticker_data = data
+                resolved = company
+                break
+
+    if not ticker_data:
+        st.warning(f"No data found for **{query.strip()}**. Try refreshing data or check the ticker symbol.")
+    else:
+        symbol = ticker_data.get('symbol', resolved.upper())
+        dominant = ticker_data.get('dominant_sentiment', 'neutral')
+        color = SENTIMENT_COLORS.get(dominant, COLORS['secondary'])
+        mention_count = ticker_data.get('mention_count', 0)
+        last_updated = ticker_data.get('last_updated', 'unknown')
+
+        # Header card
+        st.markdown(f"""
+        <div class="ticker-card" style="border-left: 4px solid {color}; padding: 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-size:1.6em; font-weight:bold;">{symbol}</span>
+                    <span style="color:#8B949E; margin-left:10px;">{resolved}</span>
+                </div>
+                <div class="sentiment-{dominant}" style="font-size:1.2em; font-weight:bold;">
+                    {dominant.upper()}
+                </div>
+            </div>
+            <div style="color:#8B949E; font-size:0.85em; margin-top:4px;">
+                {mention_count} mentions · updated {last_updated[:16] if last_updated != 'unknown' else 'unknown'}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # AI Verdict
+        with st.container():
+            st.markdown("#### AI Verdict")
+            with st.spinner("Generating verdict..."):
+                verdict = generate_briefing(resolved, symbol, ticker_data)
+            st.info(f'"{verdict}"\n\n— MarketPulse AI')
+
+        # Sentiment trend chart
+        by_day = ticker_data.get('sentiment_by_day', {})
+        if by_day:
+            st.markdown("#### Sentiment Trend (7 days)")
+            import plotly.graph_objects as go
+
+            days = sorted(by_day.keys())
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=[1 if by_day[d] == 'bullish' else 0 for d in days],
+                name='Bullish', mode='lines+markers',
+                line=dict(color=SENTIMENT_COLORS['bullish'])
+            ))
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=[1 if by_day[d] == 'bearish' else 0 for d in days],
+                name='Bearish', mode='lines+markers',
+                line=dict(color=SENTIMENT_COLORS['bearish'])
+            ))
+            fig.update_layout(
+                template='plotly_dark', height=200,
+                margin=dict(l=0, r=0, t=0, b=0),
+                showlegend=True,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        # By Source breakdown
+        st.markdown("#### By Source")
+        top_posts = ticker_data.get('top_posts', {})
+        src_cols = st.columns(3)
+        for i, source in enumerate(('reddit', 'stocktwits', 'news')):
+            src_sentiment = ticker_data.get(f'{source}_sentiment') or 'N/A'
+            src_posts = top_posts.get(source, [])
+            src_color = SENTIMENT_COLORS.get(src_sentiment, COLORS['secondary'])
+            with src_cols[i]:
+                st.markdown(f"**{source.upper()}**")
+                st.markdown(
+                    f"<span style='color:{src_color}; font-weight:bold;'>"
+                    f"{src_sentiment.upper() if src_sentiment else 'N/A'}</span>",
+                    unsafe_allow_html=True
+                )
+                for post in src_posts[:3]:
+                    st.caption(f"> {post['text'][:100]}...")
+
+    st.markdown("---")
+
+# ── Market Overview grid (SECONDARY) ─────────────────────────────────────────
 if not ticker_results:
     st.info(
-        "No ticker data yet. The pipeline may still be warming up, "
-        "or no ticker mentions were found in the current dataset."
+        "No market data yet. Click **Refresh Data** in the sidebar to ingest and analyze."
     )
 else:
-    st.markdown("### Ticker Sentiment")
-    st.caption(
-        "Each card shows the dominant sentiment direction for that ticker based "
-        "on programmatic labeling of all posts mentioning it."
+    st.markdown("### Market Overview")
+
+    # KPI row
+    from collections import Counter
+    sentiment_dist = Counter(
+        v['dominant_sentiment'] for v in ticker_results.values()
     )
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Tickers Tracked", len(ticker_results))
+    k2.metric("Bullish", sentiment_dist.get('bullish', 0))
+    k3.metric("Bearish", sentiment_dist.get('bearish', 0))
+    k4.metric("Neutral", sentiment_dist.get('neutral', 0))
 
+    st.markdown("---")
+
+    # Ticker card grid
     cols = st.columns(3)
-    for i, (company, ticker_data) in enumerate(ticker_results.items()):
-        col = cols[i % 3]
-        with col:
-            sentiment = ticker_data.get("dominant_sentiment", "neutral")
-            color = SENTIMENT_COLORS.get(sentiment, COLORS["secondary"])
-            symbol = ticker_data.get("symbol", company.upper())
-            mention_count = ticker_data.get("mention_count", 0)
-            avg_conf = ticker_data.get("avg_confidence", 0.0)
+    for i, (company, data) in enumerate(ticker_results.items()):
+        sentiment = data.get('dominant_sentiment', 'neutral')
+        color = SENTIMENT_COLORS.get(sentiment, COLORS['secondary'])
+        symbol = data.get('symbol', company.upper())
+        mentions = data.get('mention_count', 0)
+        conf = data.get('avg_confidence', 0.0)
 
-            st.markdown(
-                f"""
-                <div class="ticker-card">
-                    <div style="font-size:1.3em; font-weight:bold;">{symbol}</div>
-                    <div style="color: #8B949E;">{company}</div>
-                    <div class="sentiment-{sentiment}" style="font-size:1.1em; margin:8px 0;">
-                        {sentiment.upper()}
-                    </div>
-                    <div style="color: #8B949E; font-size:0.9em;">
-                        {mention_count} mentions &middot; {avg_conf:.0%} confidence
-                    </div>
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div class="ticker-card">
+                <div style="font-size:1.2em; font-weight:bold;">{symbol}</div>
+                <div style="color:#8B949E; font-size:0.85em;">{company}</div>
+                <div class="sentiment-{sentiment}" style="margin:6px 0;">
+                    {sentiment.upper()}
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                <div style="color:#8B949E; font-size:0.8em;">
+                    {mentions} mentions · {conf:.0%} confidence
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            if st.button(f"View {symbol}", key=f"btn_{company}"):
-                st.session_state["selected_ticker"] = company
-                st.switch_page("pages/1_Ticker_Detail.py")
-
-    # -----------------------------------------------------------------------
-    # Ticker mentions bar chart
-    # -----------------------------------------------------------------------
+    # Most mentioned bar chart
     st.markdown("---")
     st.markdown("### Most Mentioned Tickers")
-    st.caption("Bar length shows total mentions. Color reflects dominant sentiment.")
-
     fig = ticker_mentions_bar(ticker_results, top_n=15)
     st.plotly_chart(fig, use_container_width=True)
-
-# ---------------------------------------------------------------------------
-# Market-level summary
-# ---------------------------------------------------------------------------
-if market_summary:
-    st.markdown("---")
-    st.markdown("### Market Sentiment Summary")
-
-    overall = market_summary.get("overall_sentiment", "")
-    bullish_pct = market_summary.get("bullish_pct", 0.0)
-    bearish_pct = market_summary.get("bearish_pct", 0.0)
-
-    ms_col1, ms_col2, ms_col3 = st.columns(3)
-    ms_col1.metric("Overall Market Bias", overall.upper() if overall else "MIXED")
-    ms_col2.metric("Bullish Tickers", f"{bullish_pct:.0%}")
-    ms_col3.metric("Bearish Tickers", f"{bearish_pct:.0%}")
-
-# ---------------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------------
-st.markdown("---")
-used_fallback = source_summary.get("used_fallback", False)
-if used_fallback:
-    st.info(
-        "No live API keys detected. Data shown is from the **synthetic dataset**. "
-        "Add credentials to `.env` to enable live Reddit, Stocktwits, or News ingestion."
-    )
-else:
-    st.caption(f"Data mode: {source_summary.get('mode', 'auto').upper()} | Sources: {data_source_display}")
