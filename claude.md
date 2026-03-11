@@ -210,3 +210,18 @@ python3 -m pytest tests/ -v               # run all 158 tests
 - **Model auto-trains** on first Refresh if ≥200 labeled posts are collected. Model lives at `data/models/`.
 - **Port** — Streamlit defaults to 8501. Set with `--server.port` or `STREAMLIT_SERVER_PORT` env var.
 - **Memory** — peak usage during ingestion is modest (feedparser + sklearn). 512MB RAM is sufficient.
+
+---
+
+## Agent Team
+
+4 project-specific AI agents at `.claude/agents/`. All share persistent memory at `.claude/agent-memory/shared/`.
+
+| Agent | Role | Scope | Color |
+|-------|------|-------|-------|
+| `mp-ingestion` | Data acquisition specialist | `src/ingestion/`, `src/extraction/`, `src/storage/`, `src/utils/`, `scripts/ingest.py`, `scripts/run_pipeline.py` | blue |
+| `mp-sentiment` | ML & NLP specialist | `src/labeling/`, `src/models/`, `src/analysis/`, `scripts/label.py`, `scripts/train.py` | magenta |
+| `mp-dashboard` | UI/UX specialist | `app/`, `src/agent/briefing.py` | green |
+| `mp-qa` | Quality gatekeeper | `tests/` (owns), all source (read-only review) | yellow |
+
+**Behavioral rules**: All agents propose before executing, check shared memory at task start, stay within their scope, and verify work with evidence before claiming done. Cross-boundary tasks are flagged for the appropriate agent; the user orchestrates handoffs.
