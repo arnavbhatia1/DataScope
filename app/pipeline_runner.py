@@ -29,13 +29,21 @@ from src.storage.db import (
 )
 
 
-def refresh_pipeline(start_date_str=None, end_date_str=None) -> dict:
+def refresh_pipeline(start_date_str=None, end_date_str=None, progress_callback=None) -> dict:
     """
     Run full pipeline: ingest → label → extract → analyze → write SQLite.
 
     Expensive. Call on startup or manual Refresh only.
     Returns source_summary for status display.
+
+    Args:
+        progress_callback: optional callable(str) invoked at each pipeline stage
+                           for UI feedback. Defaults to None (silent).
     """
+    def _progress(msg):
+        if progress_callback:
+            progress_callback(msg)
+
     init_db()
     config = load_config()
 
@@ -43,15 +51,18 @@ def refresh_pipeline(start_date_str=None, end_date_str=None) -> dict:
     end_date = datetime.fromisoformat(end_date_str) if end_date_str else None
 
     # Ingest
+    _progress("Fetching from RSS feeds...")
     mgr = IngestionManager(config)
     df = mgr.ingest(start_date=start_date, end_date=end_date)
     source_summary = mgr.get_source_summary()
 
     # Label
+    _progress("Labeling posts...")
     agg = LabelAggregator(config=config)
     df = agg.aggregate_batch(df)
 
     # Extract tickers
+    _progress("Extracting tickers...")
     te = TickerExtractor()
     df['tickers'] = df['text'].apply(te.extract)
 
@@ -63,10 +74,12 @@ def refresh_pipeline(start_date_str=None, end_date_str=None) -> dict:
         df['confidence'] = 0.0
 
     # Analyze per-ticker
+    _progress("Analyzing sentiment...")
     analyzer = TickerSentimentAnalyzer()
     ticker_results = analyzer.analyze(df)
 
     # Write to SQLite
+    _progress("Saving results...")
     save_posts(df)
     save_ticker_cache(ticker_results)
 
