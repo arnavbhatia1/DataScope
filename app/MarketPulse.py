@@ -16,7 +16,7 @@ if _root not in sys.path:
 load_dotenv(os.path.join(_root, '.env'))
 
 from app.components.styles import apply_theme, COLORS, SENTIMENT_COLORS
-from app.components.charts import ticker_mentions_bar
+from app.components.charts import ticker_mentions_bar, sentiment_trend
 
 st.set_page_config(
     page_title="MarketPulse",
@@ -49,11 +49,16 @@ st.session_state["end_date"] = end_date.isoformat()
 from app.pipeline_runner import refresh_pipeline, load_model, get_ticker_cache
 
 if st.sidebar.button("Refresh Data", use_container_width=True):
-    with st.spinner("Ingesting and analyzing market data..."):
+    with st.status("Refreshing market data...", expanded=True) as status:
+        st.write("Fetching from RSS feeds...")
         source_summary = refresh_pipeline(
             start_date_str=start_date.isoformat(),
             end_date_str=end_date.isoformat(),
         )
+        st.write("Analysis complete.")
+        posts = source_summary.get('total_posts', 0)
+        sources = source_summary.get('sources_used', [])
+        status.update(label=f"Done — {posts} posts from {', '.join(sources)}", state="complete")
         st.cache_data.clear()
     st.rerun()
 
@@ -63,11 +68,9 @@ from src.storage.db import init_db, get_training_history
 init_db()
 model = load_model()
 if model and model.is_trained:
-    history = get_training_history()
-    f1 = history[0]['weighted_f1'] if history else 0.0
-    st.sidebar.success(f"Model trained (F1: {f1:.2f})")
+    st.sidebar.success("AI-enhanced analysis active")
 else:
-    st.sidebar.info("Keyword fallback active (model not yet trained)")
+    st.sidebar.info("Basic analysis mode")
 
 st.sidebar.markdown("---")
 
@@ -111,25 +114,22 @@ if search_clicked and query.strip():
                 break
 
     if not ticker_data:
-        st.warning(f"No data found for **{query.strip()}**. Try refreshing data or check the ticker symbol.")
+        st.warning(f"No data for **{query.strip()}**. Try a ticker symbol like TSLA, NVDA, or AAPL — then hit **Refresh Data** if needed.")
     else:
         symbol = ticker_data.get('symbol', resolved.upper())
         dominant = ticker_data.get('dominant_sentiment', 'neutral')
-        color = SENTIMENT_COLORS.get(dominant, COLORS['secondary'])
         mention_count = ticker_data.get('mention_count', 0)
         last_updated = ticker_data.get('last_updated', 'unknown')
 
-        # Header card
+        # Briefing card with badge pill
         st.markdown(f"""
-        <div class="ticker-card" style="border-left: 4px solid {color}; padding: 16px;">
+        <div class="briefing-card" style="border-left: 4px solid {SENTIMENT_COLORS.get(dominant, COLORS['secondary'])};">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <span style="font-size:1.6em; font-weight:bold;">{symbol}</span>
                     <span style="color:#8B949E; margin-left:10px;">{resolved}</span>
                 </div>
-                <div class="sentiment-{dominant}" style="font-size:1.2em; font-weight:bold;">
-                    {dominant.upper()}
-                </div>
+                <span class="sentiment-badge sentiment-badge-{dominant}">{dominant.upper()}</span>
             </div>
             <div style="color:#8B949E; font-size:0.85em; margin-top:4px;">
                 {mention_count} mentions · updated {last_updated[:16] if last_updated != 'unknown' else 'unknown'}
@@ -138,34 +138,16 @@ if search_clicked and query.strip():
         """, unsafe_allow_html=True)
 
         # AI Verdict
-        with st.container():
-            st.markdown("#### AI Verdict")
-            with st.spinner("Generating verdict..."):
-                verdict = generate_briefing(resolved, symbol, ticker_data)
-            st.info(f'"{verdict}"\n\n— MarketPulse AI')
+        st.markdown("#### AI Verdict")
+        with st.spinner("Generating verdict..."):
+            verdict = generate_briefing(resolved, symbol, ticker_data)
+        st.markdown(f'<div class="briefing-verdict">"{verdict}"<br><small style="color:#8B949E;">— MarketPulse AI</small></div>', unsafe_allow_html=True)
 
         # Sentiment trend chart
         by_day = ticker_data.get('sentiment_by_day', {})
         if by_day:
             st.markdown("#### Sentiment Trend (7 days)")
-            import plotly.graph_objects as go
-
-            days = sorted(by_day.keys())
-            bar_colors = [SENTIMENT_COLORS.get(by_day[d], COLORS['secondary']) for d in days]
-
-            fig = go.Figure(go.Bar(
-                x=days,
-                y=[1] * len(days),
-                marker_color=bar_colors,
-                text=[by_day[d] for d in days],
-                textposition='inside',
-            ))
-            fig.update_layout(
-                template='plotly_dark', height=160,
-                margin=dict(l=0, r=0, t=0, b=0),
-                showlegend=False,
-                yaxis=dict(visible=False),
-            )
+            fig = sentiment_trend(by_day)
             st.plotly_chart(fig, use_container_width=True)
 
         # By Source breakdown
@@ -175,14 +157,16 @@ if search_clicked and query.strip():
         for i, source in enumerate(('reddit', 'stocktwits', 'news')):
             src_sentiment = ticker_data.get(f'{source}_sentiment') or 'N/A'
             src_posts = top_posts.get(source, [])
-            src_color = SENTIMENT_COLORS.get(src_sentiment, COLORS['secondary'])
             with src_cols[i]:
-                st.markdown(f"**{source.upper()}**")
-                st.markdown(
-                    f"<span style='color:{src_color}; font-weight:bold;'>"
-                    f"{src_sentiment.upper() if src_sentiment else 'N/A'}</span>",
-                    unsafe_allow_html=True
-                )
+                badge_class = f"sentiment-badge-{src_sentiment}" if src_sentiment != 'N/A' else "sentiment-badge-neutral"
+                st.markdown(f"""
+                <div class="source-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <strong>{source.upper()}</strong>
+                        <span class="sentiment-badge {badge_class}">{src_sentiment.upper()}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
                 for post in src_posts[:3]:
                     st.caption(f"> {post['text'][:100]}...")
 
@@ -196,35 +180,24 @@ if not ticker_results:
 else:
     st.markdown("### Market Overview")
 
-    # KPI row
-    from collections import Counter
-    sentiment_dist = Counter(
-        v['dominant_sentiment'] for v in ticker_results.values()
-    )
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Tickers Tracked", len(ticker_results))
-    k2.metric("Bullish", sentiment_dist.get('bullish', 0))
-    k3.metric("Bearish", sentiment_dist.get('bearish', 0))
-    k4.metric("Neutral", sentiment_dist.get('neutral', 0))
-
-    st.markdown("---")
-
-    # Ticker card grid
+    # Ticker card grid — clickable buttons with styled cards
     cols = st.columns(3)
     for i, (company, data) in enumerate(ticker_results.items()):
         sentiment = data.get('dominant_sentiment', 'neutral')
-        color = SENTIMENT_COLORS.get(sentiment, COLORS['secondary'])
         symbol = data.get('symbol', company.upper())
         mentions = data.get('mention_count', 0)
         conf = data.get('avg_confidence', 0.0)
 
         with cols[i % 3]:
+            if st.button(symbol, key=f"ticker_btn_{i}", use_container_width=True):
+                st.session_state["selected_ticker"] = company
+                st.switch_page("pages/1_Ticker_Detail.py")
             st.markdown(f"""
             <div class="ticker-card">
                 <div style="font-size:1.2em; font-weight:bold;">{symbol}</div>
                 <div style="color:#8B949E; font-size:0.85em;">{company}</div>
-                <div class="sentiment-{sentiment}" style="margin:6px 0;">
-                    {sentiment.upper()}
+                <div style="margin:6px 0;">
+                    <span class="sentiment-badge sentiment-badge-{sentiment}">{sentiment.upper()}</span>
                 </div>
                 <div style="color:#8B949E; font-size:0.8em;">
                     {mentions} mentions · {conf:.0%} confidence
