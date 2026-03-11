@@ -21,7 +21,8 @@ class NewsIngester(BaseIngester):
 
     Sources:
     - Google News RSS: searched by keyword (stock market, earnings, IPO, etc.)
-    - Yahoo Finance RSS: per tracked ticker symbol
+    - Yahoo Finance RSS: per tracked ticker symbol (20 tickers)
+    - Additional static feeds: CNBC Markets, MarketWatch (configurable)
 
     post_id format: "news_{source_slug}_{md5(url)[:12]}"
     """

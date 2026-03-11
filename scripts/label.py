@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 from src.utils.config import load_config
 from src.labeling.aggregator import LabelAggregator
-from src.labeling.functions import LABELING_FUNCTIONS
 from src.utils.logger import get_logger
 
 logger = get_logger('label')
@@ -49,7 +48,7 @@ def main():
     print(f"LABELING COMPLETE")
     print(f"{'='*50}")
     print(f"  Total posts: {len(df)}")
-    print(f"  Labeled: {labeled_count} ({labeled_count/len(df):.1%})")
+    print(f"  Labeled: {labeled_count} ({coverage:.1%})")
     print(f"  Coverage: {coverage:.1%}")
     print(f"  Distribution: {df['programmatic_label'].value_counts().to_dict()}")
     print(f"  Saved to: {output_path}")

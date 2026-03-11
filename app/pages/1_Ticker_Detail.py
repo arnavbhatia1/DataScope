@@ -5,6 +5,7 @@ Deep-dive sentiment view for a single ticker. Shows sentiment distribution,
 key metrics, and the individual evidence posts that drove the label.
 """
 
+import html
 import streamlit as st
 import sys
 import os
@@ -105,15 +106,18 @@ ticker_data = ticker_results[selected_company]
 symbol = ticker_data.get("symbol", selected_company.upper())
 sentiment = ticker_data.get("dominant_sentiment", "neutral")
 
+safe_symbol = html.escape(str(symbol))
+safe_company = html.escape(str(selected_company))
+safe_sentiment = html.escape(str(sentiment))
 st.markdown(
     f"""
     <div style="margin-bottom: 4px;">
-        <span style="font-size:2em; font-weight:bold;">{symbol}</span>
+        <span style="font-size:2em; font-weight:bold;">{safe_symbol}</span>
         &nbsp;
-        <span style="color:#8B949E; font-size:1.3em;">{selected_company}</span>
+        <span style="color:#8B949E; font-size:1.3em;">{safe_company}</span>
     </div>
     <div style="margin-bottom:16px;">
-        <span class="sentiment-badge sentiment-badge-{sentiment}">{sentiment.upper()}</span>
+        <span class="sentiment-badge sentiment-badge-{safe_sentiment}">{safe_sentiment.upper()}</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -222,20 +226,25 @@ else:
             display_df["timestamp"], errors="coerce"
         ).dt.strftime("%Y-%m-%d %H:%M")
 
+    # Sort by confidence descending before rendering.
+    if "confidence" in display_df.columns:
+        display_df = display_df.sort_values("confidence", ascending=False, key=lambda s: s.str.rstrip('%').apply(lambda v: float(v) if v != '—' else -1))
+
     # Build styled HTML table with evidence-table CSS class and badge pills.
     col_order = [c for c in ["text", "sentiment", "confidence", "source", "timestamp"] if c in display_df.columns]
     display_df = display_df[col_order]
 
-    header_cells = "".join(f"<th>{col.capitalize()}</th>" for col in col_order)
+    header_cells = "".join(f"<th>{html.escape(col.capitalize())}</th>" for col in col_order)
     rows_html = ""
     for _, row in display_df.iterrows():
         cells = ""
         for col in col_order:
             val = row[col] if pd.notna(row[col]) else "—"
+            safe_val = html.escape(str(val))
             if col == "sentiment" and val != "—":
-                cells += f'<td><span class="sentiment-badge sentiment-badge-{val}">{str(val).upper()}</span></td>'
+                cells += f'<td><span class="sentiment-badge sentiment-badge-{html.escape(str(val))}">{safe_val.upper()}</span></td>'
             else:
-                cells += f"<td>{val}</td>"
+                cells += f"<td>{safe_val}</td>"
         rows_html += f"<tr>{cells}</tr>"
 
     table_html = f"""

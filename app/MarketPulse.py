@@ -4,6 +4,7 @@ MarketPulse — Financial Sentiment Hub
 Run: streamlit run app/MarketPulse.py
 """
 
+import html as html_mod
 import streamlit as st
 import sys, os, json
 from datetime import date, timedelta
@@ -50,12 +51,11 @@ from app.pipeline_runner import refresh_pipeline, load_model, get_ticker_cache
 
 if st.sidebar.button("Refresh Data", use_container_width=True):
     with st.status("Refreshing market data...", expanded=True) as status:
-        st.write("Fetching from RSS feeds...")
         source_summary = refresh_pipeline(
             start_date_str=start_date.isoformat(),
             end_date_str=end_date.isoformat(),
+            progress_callback=st.write,
         )
-        st.write("Analysis complete.")
         posts = source_summary.get('total_posts', 0)
         sources = source_summary.get('sources_used', [])
         status.update(label=f"Done — {posts} posts from {', '.join(sources)}", state="complete")
@@ -63,7 +63,7 @@ if st.sidebar.button("Refresh Data", use_container_width=True):
     st.rerun()
 
 # Model status
-from src.storage.db import init_db, get_training_history
+from src.storage.db import init_db
 
 init_db()
 model = load_model()
@@ -122,17 +122,21 @@ if search_clicked and query.strip():
         last_updated = ticker_data.get('last_updated', 'unknown')
 
         # Briefing card with badge pill
+        safe_symbol = html_mod.escape(str(symbol))
+        safe_resolved = html_mod.escape(str(resolved))
+        safe_dominant = html_mod.escape(str(dominant))
+        safe_updated = html_mod.escape(str(last_updated[:16] if last_updated != 'unknown' else 'unknown'))
         st.markdown(f"""
         <div class="briefing-card" style="border-left: 4px solid {SENTIMENT_COLORS.get(dominant, COLORS['secondary'])};">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                    <span style="font-size:1.6em; font-weight:bold;">{symbol}</span>
-                    <span style="color:#8B949E; margin-left:10px;">{resolved}</span>
+                    <span style="font-size:1.6em; font-weight:bold;">{safe_symbol}</span>
+                    <span style="color:#8B949E; margin-left:10px;">{safe_resolved}</span>
                 </div>
-                <span class="sentiment-badge sentiment-badge-{dominant}">{dominant.upper()}</span>
+                <span class="sentiment-badge sentiment-badge-{safe_dominant}">{safe_dominant.upper()}</span>
             </div>
             <div style="color:#8B949E; font-size:0.85em; margin-top:4px;">
-                {mention_count} mentions · updated {last_updated[:16] if last_updated != 'unknown' else 'unknown'}
+                {mention_count} mentions · updated {safe_updated}
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -141,7 +145,7 @@ if search_clicked and query.strip():
         st.markdown("#### AI Verdict")
         with st.spinner("Generating verdict..."):
             verdict = generate_briefing(resolved, symbol, ticker_data)
-        st.markdown(f'<div class="briefing-verdict">"{verdict}"<br><small style="color:#8B949E;">— MarketPulse AI</small></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="briefing-verdict">"{html_mod.escape(str(verdict))}"<br><small style="color:#8B949E;">— MarketPulse AI</small></div>', unsafe_allow_html=True)
 
         # Sentiment trend chart
         by_day = ticker_data.get('sentiment_by_day', {})
@@ -159,11 +163,12 @@ if search_clicked and query.strip():
             src_posts = top_posts.get(source, [])
             with src_cols[i]:
                 badge_class = f"sentiment-badge-{src_sentiment}" if src_sentiment != 'N/A' else "sentiment-badge-neutral"
+                safe_src_sent = html_mod.escape(str(src_sentiment))
                 st.markdown(f"""
                 <div class="source-card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <strong>{source.upper()}</strong>
-                        <span class="sentiment-badge {badge_class}">{src_sentiment.upper()}</span>
+                        <strong>{html_mod.escape(source.upper())}</strong>
+                        <span class="sentiment-badge {badge_class}">{safe_src_sent.upper()}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -192,12 +197,15 @@ else:
             if st.button(symbol, key=f"ticker_btn_{i}", use_container_width=True):
                 st.session_state["selected_ticker"] = company
                 st.switch_page("pages/1_Ticker_Detail.py")
+            safe_sym = html_mod.escape(str(symbol))
+            safe_co = html_mod.escape(str(company))
+            safe_sent = html_mod.escape(str(sentiment))
             st.markdown(f"""
             <div class="ticker-card">
-                <div style="font-size:1.2em; font-weight:bold;">{symbol}</div>
-                <div style="color:#8B949E; font-size:0.85em;">{company}</div>
+                <div style="font-size:1.2em; font-weight:bold;">{safe_sym}</div>
+                <div style="color:#8B949E; font-size:0.85em;">{safe_co}</div>
                 <div style="margin:6px 0;">
-                    <span class="sentiment-badge sentiment-badge-{sentiment}">{sentiment.upper()}</span>
+                    <span class="sentiment-badge sentiment-badge-{safe_sent}">{safe_sent.upper()}</span>
                 </div>
                 <div style="color:#8B949E; font-size:0.8em;">
                     {mentions} mentions · {conf:.0%} confidence
