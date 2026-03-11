@@ -34,6 +34,7 @@ A premium feature that adds an autonomous investment bot to MarketPulse. The bot
 
 **2. Valuation Signal** (from yfinance)
 - `pe_ratio`: Price-to-earnings relative to sector median
+- `ev_to_ebitda`: Enterprise Value / EBITDA — measures operating profitability independent of capital structure, taxes, and depreciation. Lower = cheaper. More reliable than P/E for comparing across sectors and capital structures.
 - `price_to_book`: Asset value backing
 - `dividend_yield`: Income component
 - `market_cap_category`: Large/mid/small cap (affects risk weighting)
@@ -66,17 +67,20 @@ sentiment_raw = (
 
 **Valuation Composite (0-100):**
 ```
-pe_score = percentile_rank(sector_median_pe / pe_ratio)  # lower PE = higher score
-pb_score = percentile_rank(1.0 / price_to_book)          # lower P/B = higher score
-div_score = percentile_rank(dividend_yield)               # higher yield = higher score
-cap_score = {large: 70, mid: 50, small: 30}              # large cap = safer
+pe_score = percentile_rank(sector_median_pe / pe_ratio)         # lower PE = higher score
+ebitda_score = percentile_rank(sector_median_ev_ebitda / ev_to_ebitda)  # lower EV/EBITDA = higher score
+pb_score = percentile_rank(1.0 / price_to_book)                 # lower P/B = higher score
+div_score = percentile_rank(dividend_yield)                      # higher yield = higher score
+cap_score = {large: 70, mid: 50, small: 30}                     # large cap = safer
 
-valuation_raw = (0.35 * pe_score + 0.30 * pb_score + 0.20 * div_score + 0.15 * cap_score)
+valuation_raw = (0.25 * pe_score + 0.25 * ebitda_score + 0.20 * pb_score + 0.15 * div_score + 0.15 * cap_score)
 ```
 
 Special cases:
 - Negative PE (unprofitable): `pe_score = 0`
-- PE/PB unavailable (common for ETFs): skip valuation signal, redistribute weight equally to sentiment and momentum. See "Missing Data Handling" below.
+- Negative EBITDA (operating loss): `ebitda_score = 0`
+- EV/EBITDA unavailable: redistribute its 0.25 weight to PE (making PE 0.50). If both PE and EV/EBITDA are missing, redistribute to remaining signals.
+- PE/PB/EBITDA all unavailable (common for ETFs): skip valuation signal, redistribute weight equally to sentiment and momentum. See "Missing Data Handling" below.
 
 **Momentum Composite (0-100):**
 ```
