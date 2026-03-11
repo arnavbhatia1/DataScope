@@ -58,8 +58,7 @@ class IngestionManager:
         4. Combine DataFrames
         5. Deduplicate by post_id
         6. Validate schema
-        7. Fall back to synthetic if needed (in auto mode)
-        8. Store summary statistics
+        7. Store summary statistics
 
         Args:
             start_date: datetime or None (defaults to N days ago from config)

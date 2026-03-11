@@ -86,13 +86,6 @@ def get_ticker_cache() -> dict:
     return load_ticker_cache()
 
 
-def get_market_summary(ticker_results: dict) -> dict:
-    """Compute market-level summary from ticker_results."""
-    from src.analysis.ticker_sentiment import TickerSentimentAnalyzer
-    analyzer = TickerSentimentAnalyzer()
-    return analyzer.get_market_summary(ticker_results)
-
-
 @st.cache_resource
 def load_model():
     """Load trained sentiment model from disk. None if not yet trained."""

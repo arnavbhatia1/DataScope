@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 from src.utils.config import load_config
 from src.models.pipeline import SentimentPipeline
-from src.models.versioning import ModelVersion
 from src.utils.logger import get_logger
 
 logger = get_logger('train')
@@ -62,12 +61,6 @@ def main():
     model_dir = config.get('data', {}).get('storage', {}).get('model_dir', 'data/models')
     pipeline.save(model_dir)
 
-    # Version
-    mv = ModelVersion(model_dir)
-    version = mv.save_version(pipeline, args.source,
-                               report.get('validation_metrics', {}),
-                               notes=f"Trained on {len(texts)} {args.source} samples")
-
     print(f"\n{'='*50}")
     print(f"TRAINING COMPLETE")
     print(f"{'='*50}")
@@ -78,7 +71,7 @@ def main():
         print(f"  Validation Accuracy: {report['validation_metrics']['accuracy']:.3f}")
     print(f"  Features: {report['num_features']}")
     print(f"  Classes: {report['classes']}")
-    print(f"  Model version: v{version}")
+    print(f"  Model saved to: {model_dir}")
 
     # Feature importance
     features = pipeline.get_feature_importance(top_n=5)

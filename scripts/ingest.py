@@ -52,7 +52,7 @@ def main():
     print(f"{'='*50}")
     print(f"  Total posts: {summary['total_posts']}")
     print(f"  Sources: {summary['sources_used']}")
-    print(f"  Fallback used: {summary['used_fallback']}")
+    print(f"  Unavailable: {summary.get('sources_unavailable', [])}")
     print(f"  Saved to: {output_path}")
     print(f"{'='*50}")
 
