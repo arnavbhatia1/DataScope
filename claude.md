@@ -31,15 +31,14 @@ MarketPulse/
 │   ├── pages/
 │   │   └── 1_Ticker_Detail.py      # Deep-dive page for a single ticker
 │   └── components/
-│       ├── charts.py               # Plotly chart components (pie, bar, probability)
-│       ├── metrics.py              # Streamlit metric widgets
-│       └── styles.py               # Dark theme colors and CSS
+│       ├── charts.py               # Plotly chart components (pie, bar, trend, probability)
+│       └── styles.py               # Dark theme colors, animations, and CSS
 ├── src/
 │   ├── ingestion/
 │   │   ├── base.py                 # Abstract base ingester + REQUIRED_COLUMNS schema
 │   │   ├── reddit.py               # PRAW-based Reddit ingester
 │   │   ├── stocktwits.py           # Stocktwits API ingester
-│   │   ├── news.py                 # Free RSS ingester (Google News + Yahoo Finance)
+│   │   ├── news.py                 # Free RSS ingester (Google News + Yahoo Finance + CNBC + MarketWatch)
 │   │   └── manager.py              # Orchestrates all sources; raises if all fail
 │   ├── labeling/
 │   │   ├── functions.py            # 16 keyword/emoji/structural labeling functions
@@ -66,7 +65,7 @@ MarketPulse/
 │   └── train.py                    # CLI: train only
 ├── config/
 │   └── default.yaml                # Data sources, model hyperparameters
-├── tests/                          # 158 tests (pytest)
+├── tests/                          # 166 tests (pytest)
 ├── data/
 │   ├── marketpulse.db              # SQLite database (gitignored)
 │   ├── raw/                        # Raw ingested CSVs (gitignored)
@@ -84,7 +83,7 @@ Defines `REQUIRED_COLUMNS` that every ingester must return:
 `post_id, text, source, timestamp, author, score, url, metadata`
 
 ### `src/ingestion/news.py`
-Free RSS ingester — **no API key needed**. Pulls from Google News RSS and Yahoo Finance RSS using `feedparser`. `is_available()` always returns `True`. Posts are deduplicated by URL, filtered by date range.
+Free RSS ingester — **no API key needed**. Pulls from Google News RSS, Yahoo Finance RSS (20 tickers), CNBC Markets, and MarketWatch using `feedparser`. `is_available()` always returns `True`. Posts are deduplicated by normalized URL (tracking params stripped), filtered by date range. Entries with unparseable dates are skipped. Per-entry error handling ensures one bad feed entry doesn't kill the whole feed.
 
 ### `src/ingestion/manager.py`
 Tries all three sources. Skips sources where `is_available()` is False. Raises `RuntimeError` if no data is collected (news RSS should always succeed). No synthetic fallback.
@@ -114,7 +113,7 @@ Single SQLite file at `data/marketpulse.db`. Three tables:
 `generate_briefing(company, ticker, ticker_data)` calls `claude-sonnet-4-6` with `max_tokens=150` to write a 2-3 sentence verdict. Returns a static fallback string if `ANTHROPIC_API_KEY` is unset or the call fails.
 
 ### `app/pipeline_runner.py`
-- `refresh_pipeline(start_date_str, end_date_str)` — full pipeline run; called on Refresh button click
+- `refresh_pipeline(start_date_str, end_date_str, progress_callback)` — full pipeline run with optional stage-level progress reporting
 - `get_ticker_cache()` — reads SQLite, cached 60s via `@st.cache_data`
 - `load_model()` — loads trained model, cached via `@st.cache_resource`
 - `_maybe_train_model(df, config)` — auto-trains if ≥200 labeled posts and no model exists yet
@@ -198,7 +197,7 @@ python3 -m streamlit run app/MarketPulse.py
 ```bash
 python3 scripts/run_pipeline.py           # 7-day lookback
 python3 scripts/run_pipeline.py --days 30 # 30-day lookback
-python3 -m pytest tests/ -v               # run all 158 tests
+python3 -m pytest tests/ -v               # run all 166 tests
 ```
 
 ---
