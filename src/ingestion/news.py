@@ -2,6 +2,7 @@ import hashlib
 import feedparser
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import pandas as pd
 from .base import BaseIngester
 from src.utils.logger import get_logger
@@ -24,6 +25,19 @@ class NewsIngester(BaseIngester):
 
     post_id format: "news_{source_slug}_{md5(url)[:12]}"
     """
+
+    _TRACKING_PARAMS = frozenset({
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
+        'utm_content', 'ref', 'fbclid', 'gclid', 'source',
+    })
+
+    def _normalize_url(self, url):
+        """Strip tracking parameters from URL for better deduplication."""
+        parsed = urlparse(url)
+        params = {k: v for k, v in parse_qs(parsed.query).items()
+                  if k not in self._TRACKING_PARAMS}
+        cleaned_query = urlencode(params, doseq=True)
+        return urlunparse(parsed._replace(query=cleaned_query, fragment=''))
 
     def __init__(self, config):
         self.config = config
@@ -72,39 +86,48 @@ class NewsIngester(BaseIngester):
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries:
-                url = entry.get('link', '')
-                if not url or url in seen_urls:
-                    continue
+                try:
+                    url = entry.get('link', '')
+                    if not url:
+                        continue
+                    normalized = self._normalize_url(url)
+                    if normalized in seen_urls:
+                        continue
 
-                title = entry.get('title', '')
-                summary = entry.get('summary', '')
-                text = f"{title} {summary}".strip()[:500]
-                if not text:
-                    continue
+                    title = entry.get('title', '')
+                    summary = entry.get('summary', '')
+                    text = f"{title} {summary}".strip()[:500]
+                    if not text:
+                        continue
 
-                ts = self._parse_date(entry)
-                if start_date and ts < start_date:
-                    continue
-                if end_date and ts > end_date:
-                    continue
+                    ts = self._parse_date(entry)
+                    if ts is None:
+                        continue
+                    if start_date and ts < start_date:
+                        continue
+                    if end_date and ts > end_date:
+                        continue
 
-                seen_urls.add(url)
-                url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
-                rows.append({
-                    'post_id': f"news_{source_slug}_{url_hash}",
-                    'text': text,
-                    'source': 'news',
-                    'timestamp': ts.isoformat(),
-                    'author': entry.get('author', 'unknown'),
-                    'score': 0,
-                    'url': url,
-                    'metadata': str({'news_source': source_slug, 'article_url': url}),
-                })
+                    seen_urls.add(normalized)
+                    url_hash = hashlib.md5(normalized.encode()).hexdigest()[:12]
+                    rows.append({
+                        'post_id': f"news_{source_slug}_{url_hash}",
+                        'text': text,
+                        'source': 'news',
+                        'timestamp': ts.isoformat(),
+                        'author': entry.get('author', 'unknown'),
+                        'score': 0,
+                        'url': normalized,
+                        'metadata': str({'news_source': source_slug, 'article_url': normalized}),
+                    })
+                except Exception as e:
+                    logger.warning(f"News: skipping malformed entry in {feed_url}: {e}")
         except Exception as e:
             logger.warning(f"News: failed to parse feed {feed_url}: {e}")
         return rows
 
-    def _parse_date(self, entry) -> datetime:
+    def _parse_date(self, entry):
+        """Parse date from feed entry. Returns None if unparseable."""
         for field in ('published', 'updated'):
             raw = entry.get(field)
             if raw:
@@ -112,4 +135,5 @@ class NewsIngester(BaseIngester):
                     return parsedate_to_datetime(raw).replace(tzinfo=None)
                 except Exception:
                     pass
-        return datetime.now()
+        logger.debug("News: unparseable date in entry, skipping")
+        return None
