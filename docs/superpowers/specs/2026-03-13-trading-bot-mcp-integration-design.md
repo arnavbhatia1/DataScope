@@ -39,13 +39,17 @@ The MCP SDK uses async context managers (`sse_client` yields read/write streams,
 
 ```python
 import json
+import itertools
 import threading
 import queue
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
+from src.utils.config import load_config
 
+config = load_config()
 _call_queue: queue.Queue = queue.Queue()
 _result_queues: dict[int, queue.Queue] = {}
+_call_counter = itertools.count()  # monotonic IDs — safe across threads
 _thread: threading.Thread | None = None
 _connected = threading.Event()
 
@@ -59,9 +63,12 @@ def _run_mcp_loop(url: str):
                 await session.initialize()
                 _connected.set()
                 while True:
-                    call_id, tool_name, kwargs = _call_queue.get()
+                    # Use anyio.to_thread.run_sync to avoid blocking the event loop
+                    call_id, tool_name, arguments = await anyio.to_thread.run_sync(
+                        _call_queue.get
+                    )
                     try:
-                        result = await session.call_tool(tool_name, kwargs)
+                        result = await session.call_tool(tool_name, arguments=arguments)
                         parsed = json.loads(result.content[0].text)
                         _result_queues[call_id].put(("ok", parsed))
                     except Exception as e:
@@ -83,13 +90,11 @@ def _ensure_connected():
 def call_tool(tool_name: str, **kwargs) -> dict:
     """Sync wrapper — submits tool call to background thread, blocks for result."""
     _ensure_connected()
-    call_id = id(threading.current_thread())
+    call_id = next(_call_counter)
     _result_queues[call_id] = queue.Queue()
     _call_queue.put((call_id, tool_name, kwargs))
     status, result = _result_queues[call_id].get(timeout=config["mcp_server"]["timeout"])
     del _result_queues[call_id]
-    if status == "error":
-        return result
     return result
 ```
 
@@ -311,15 +316,16 @@ The MCP server doesn't expose raw OHLC data. For the candlestick chart, call `yf
 - `CREATE TABLE IF NOT EXISTS portfolio_snapshots`
 - `CREATE TABLE IF NOT EXISTS etf_universe`
 - `_seed_etf_universe()` call
-- `PRAGMA foreign_keys = ON` (only needed for investor tables)
 
 **Delete these functions from `db.py`:**
 - `create_user()`, `get_user_by_email()`, `get_user_by_id()`
-- `create_portfolio()`, `get_portfolio()`, `update_portfolio()`
+- `create_portfolio()`, `get_portfolio()`, `get_user_portfolios()`, `update_portfolio()`
 - `get_holdings()`, `upsert_holding()`, `delete_holding()`
 - `save_trade()`, `get_trades()`, `update_trade()`
 - `save_snapshot()`, `get_snapshots()`
 - `get_etf_universe()`, `_seed_etf_universe()`
+
+Note: `PRAGMA foreign_keys = ON` appears inside the individual functions being deleted (not in `init_db()`), so it is removed implicitly when those functions are deleted.
 
 **Keep:**
 - `init_db()` (with only `posts`, `ticker_cache`, `model_training_log` table creation)
