@@ -52,7 +52,7 @@ st.session_state["end_date"] = end_date.isoformat()
 
 from app.pipeline_runner import refresh_pipeline, load_model, get_ticker_cache
 
-if st.sidebar.button("Refresh Data", use_container_width=True):
+if st.sidebar.button("Refresh Data", width="stretch"):
     with st.status("Refreshing market data...", expanded=True) as status:
         source_summary = refresh_pipeline(
             start_date_str=start_date.isoformat(),
@@ -261,7 +261,7 @@ with col_input:
         label_visibility="collapsed",
     )
 with col_btn:
-    search_clicked = st.button("Research", use_container_width=True)
+    search_clicked = st.button("Research", width="stretch")
 
 # ── Briefing card (inline, below search) ─────────────────────────────────────
 if search_clicked and query.strip():
@@ -322,7 +322,7 @@ if search_clicked and query.strip():
         if by_day:
             st.markdown("#### Sentiment Trend (7 days)")
             fig = sentiment_trend(by_day)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
         # By Source breakdown
         st.markdown("#### By Source")
@@ -381,7 +381,7 @@ else:
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("View Details", key=f"ticker_btn_{i}", use_container_width=True):
+                if st.button("View Details", key=f"ticker_btn_{i}", width="stretch"):
                     st.session_state["selected_ticker"] = company
                     st.switch_page("pages/1_Ticker_Detail.py")
 
@@ -389,4 +389,4 @@ else:
     st.markdown("---")
     st.markdown("### Most Mentioned Tickers")
     fig = ticker_mentions_bar(ticker_results, top_n=15)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

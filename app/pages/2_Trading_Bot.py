@@ -172,7 +172,7 @@ if selected_ticker:
         period_label = st.radio("Period", ["1W", "1M", "3M", "1Y"], horizontal=True, index=2)
         fig = candlestick_chart(selected_ticker, period=period_map[period_label])
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.warning(f"No chart data for {selected_ticker}")
 
@@ -185,7 +185,7 @@ if selected_ticker:
             if score_data_full:
                 st.plotly_chart(
                     score_gauge(score_data_full.get("score", 0), "Composite"),
-                    use_container_width=True,
+                    width="stretch",
                 )
         else:
             st.warning(f"Could not analyze {selected_ticker}")
@@ -249,7 +249,7 @@ if selected_ticker:
                             latest.get("commercial_net", 0),
                             latest.get("non_commercial_net", 0),
                         ),
-                        use_container_width=True,
+                        width="stretch",
                     )
         else:
             st.caption("Smart money data unavailable")
@@ -324,7 +324,7 @@ else:
             st.markdown("##### Holdings")
             df = pd.DataFrame(holdings_data["holdings"])
             display_cols = [c for c in ["symbol", "shares", "avg_cost_basis", "asset_type", "sector", "company_name"] if c in df.columns]
-            st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+            st.dataframe(df[display_cols], width="stretch", hide_index=True)
 
         # Trade history
         trades_data = get_trades(portfolio_id)
@@ -333,7 +333,7 @@ else:
             with st.expander(f"Show trades ({trades_data.get('count', 0)})"):
                 trades_df = pd.DataFrame(trades_data["trades"])
                 display_cols = [c for c in ["symbol", "action", "shares", "price", "total_value", "status", "executed_at"] if c in trades_df.columns]
-                st.dataframe(trades_df[display_cols], use_container_width=True, hide_index=True)
+                st.dataframe(trades_df[display_cols], width="stretch", hide_index=True)
 
         # Risk assessment
         risk_data = check_risk(portfolio_id)
@@ -346,14 +346,14 @@ else:
                 if scenarios:
                     st.plotly_chart(
                         stress_gauge(stress.get("stress_score", 0), scenarios),
-                        use_container_width=True,
+                        width="stretch",
                     )
             with col_sectors:
                 sector_alloc = risk_data.get("sector_allocation", {})
                 if sector_alloc:
                     st.plotly_chart(
                         sector_allocation_bars(sector_alloc),
-                        use_container_width=True,
+                        width="stretch",
                     )
 
         # Performance metrics

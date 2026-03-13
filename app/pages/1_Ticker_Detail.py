@@ -42,7 +42,7 @@ st.sidebar.title("MarketPulse")
 st.sidebar.markdown("**Ticker Detail**")
 st.sidebar.markdown("---")
 
-if st.sidebar.button("Back to Overview", use_container_width=True):
+if st.sidebar.button("Back to Overview", width="stretch"):
     st.switch_page("MarketPulse.py")
 
 # ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ with left_col:
             sentiment_dist,
             title=f"{symbol} Sentiment Breakdown",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("No sentiment distribution data available for this ticker.")
 
