@@ -258,3 +258,165 @@ class TestCheckExits:
         _check_exits("pid", threading.Event())
         assert "AMD" in bot_engine._state.open_positions  # position kept
         mock_sell.assert_not_called()  # no sell attempted
+
+
+class TestScanCandidates:
+    def setup_method(self):
+        _reset_state()
+
+    @patch("src.investor.bot_engine.scan_volume_leaders", return_value={"leaders": []})
+    @patch("src.investor.bot_engine.scan_anomalies", return_value={"anomalies": []})
+    @patch("src.investor.bot_engine.scan_universe",
+           return_value={"scores": [{"symbol": "AAPL"}, {"symbol": "MSFT"}]})
+    def test_returns_symbols_from_universe(self, mock_u, mock_a, mock_v):
+        from src.investor.bot_engine import _scan_candidates
+        result = _scan_candidates(threading.Event())
+        assert "AAPL" in result
+        assert "MSFT" in result
+
+    @patch("src.investor.bot_engine.scan_volume_leaders",
+           return_value={"leaders": [{"symbol": "AAPL"}]})
+    @patch("src.investor.bot_engine.scan_anomalies",
+           return_value={"anomalies": [{"symbol": "AAPL"}]})
+    @patch("src.investor.bot_engine.scan_universe",
+           return_value={"scores": [{"symbol": "AAPL"}, {"symbol": "MSFT"}]})
+    def test_deduplicates_across_sources(self, mock_u, mock_a, mock_v):
+        from src.investor.bot_engine import _scan_candidates
+        result = _scan_candidates(threading.Event())
+        assert result.count("AAPL") == 1
+
+    @patch("src.investor.bot_engine.scan_volume_leaders", return_value={"leaders": []})
+    @patch("src.investor.bot_engine.scan_anomalies", return_value={"anomalies": []})
+    @patch("src.investor.bot_engine.scan_universe",
+           return_value={"scores": [{"symbol": "AAPL"}, {"symbol": "HELD"}]})
+    def test_filters_out_held_positions(self, mock_u, mock_a, mock_v):
+        from src.investor import bot_engine
+        bot_engine._state.open_positions["HELD"] = {}
+        from src.investor.bot_engine import _scan_candidates
+        result = _scan_candidates(threading.Event())
+        assert "HELD" not in result
+        assert "AAPL" in result
+
+    @patch("src.investor.bot_engine.scan_volume_leaders",
+           return_value={"error": "timeout"})
+    @patch("src.investor.bot_engine.scan_anomalies",
+           return_value={"error": "timeout"})
+    @patch("src.investor.bot_engine.scan_universe",
+           return_value={"error": "timeout"})
+    def test_returns_empty_when_all_scans_fail(self, mock_u, mock_a, mock_v):
+        from src.investor.bot_engine import _scan_candidates
+        assert _scan_candidates(threading.Event()) == []
+
+
+class TestScoreCandidates:
+    def setup_method(self):
+        _reset_state()
+
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"price": 150.0, "score": {"score": 75.0}})
+    def test_returns_scored_candidates_above_min(self, mock_analyze):
+        from src.investor.bot_engine import _score_candidates
+        result = _score_candidates(["AAPL"], threading.Event())
+        assert len(result) == 1
+        assert result[0]["ticker"] == "AAPL"
+        assert result[0]["score"] == pytest.approx(75.0)
+        assert result[0]["price"] == pytest.approx(150.0)
+
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"price": 100.0, "score": {"score": 45.0}})
+    def test_filters_out_score_below_60(self, mock_analyze):
+        from src.investor.bot_engine import _score_candidates
+        result = _score_candidates(["WEAK"], threading.Event())
+        assert result == []
+
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"score": {"score": 85.0}})   # no "price" key
+    def test_skips_when_price_unavailable(self, mock_analyze):
+        from src.investor.bot_engine import _score_candidates
+        result = _score_candidates(["NOPRICE"], threading.Event())
+        assert result == []
+
+    @patch("src.investor.bot_engine.analyze_ticker", side_effect=[
+        {"price": 100.0, "score": {"score": 65.0}},
+        {"price": 200.0, "score": {"score": 90.0}},
+    ])
+    def test_sorted_descending_by_score(self, mock_analyze):
+        from src.investor.bot_engine import _score_candidates
+        result = _score_candidates(["LOW", "HIGH"], threading.Event())
+        assert result[0]["score"] > result[1]["score"]
+
+
+class TestEnterPositions:
+    def setup_method(self):
+        _reset_state()
+
+    @patch("src.investor.bot_engine.execute_buy", return_value={"status": "executed"})
+    def test_enters_position_and_logs_buy(self, mock_buy):
+        from src.investor import bot_engine
+        bot_engine._state.portfolio_cash = 10_000.0
+        from src.investor.bot_engine import _enter_positions
+        _enter_positions("pid", [{"ticker": "AAPL", "score": 85, "price": 100.0}],
+                         False, threading.Event())
+        assert "AAPL" in bot_engine._state.open_positions
+        assert bot_engine._state.trade_log[0]["action"] == "BUY"
+        # remaining_cash starts at 10_000, score=85 → tier 70-89 → 8% → 800 → 8 shares @ $100
+        mock_buy.assert_called_once_with("pid", "AAPL", 8)
+
+    @patch("src.investor.bot_engine.execute_buy", return_value={"status": "executed"})
+    def test_does_not_exceed_max_positions(self, mock_buy):
+        from src.investor import bot_engine
+        from src.investor.bot_engine import _enter_positions, MAX_POSITIONS
+        bot_engine._state.portfolio_cash = 100_000.0
+        # Fill to max
+        for i in range(MAX_POSITIONS):
+            bot_engine._state.open_positions[f"HELD{i}"] = {}
+        candidates = [{"ticker": f"NEW{i}", "score": 85, "price": 100.0} for i in range(3)]
+        _enter_positions("pid", candidates, False, threading.Event())
+        mock_buy.assert_not_called()
+
+    @patch("src.investor.bot_engine.execute_buy", return_value={"status": "executed"})
+    def test_high_vix_halves_share_count(self, mock_buy):
+        from src.investor import bot_engine
+        bot_engine._state.portfolio_cash = 10_000.0
+        from src.investor.bot_engine import _enter_positions
+        _enter_positions("pid", [{"ticker": "AAPL", "score": 85, "price": 100.0}],
+                         True, threading.Event())
+        # high_vix: 0.08 * 0.5 = 0.04 → 10000 * 0.04 / 100 = 4 shares
+        mock_buy.assert_called_once_with("pid", "AAPL", 4)
+
+    @patch("src.investor.bot_engine.execute_buy", return_value={"error": "rejected"})
+    def test_failed_buy_not_added_to_positions(self, mock_buy):
+        from src.investor import bot_engine
+        bot_engine._state.portfolio_cash = 10_000.0
+        from src.investor.bot_engine import _enter_positions
+        _enter_positions("pid", [{"ticker": "FAIL", "score": 85, "price": 100.0}],
+                         False, threading.Event())
+        assert "FAIL" not in bot_engine._state.open_positions
+
+
+class TestSnapshotPortfolio:
+    def setup_method(self):
+        _reset_state()
+
+    @patch("src.investor.bot_engine.analyze_portfolio", return_value={
+        "total_value": 10_500.0,
+        "portfolio": {"current_cash": 8_000.0},
+    })
+    def test_updates_cash_and_value(self, mock_analyze):
+        from src.investor import bot_engine
+        from src.investor.bot_engine import _snapshot_portfolio
+        _snapshot_portfolio("pid")
+        assert bot_engine._state.portfolio_cash == pytest.approx(8_000.0)
+        assert bot_engine._state.portfolio_value == pytest.approx(10_500.0)
+        assert bot_engine._state.total_pnl == pytest.approx(500.0)
+
+    @patch("src.investor.bot_engine.analyze_portfolio",
+           return_value={"error": "not found"})
+    def test_keeps_previous_values_on_failure(self, mock_analyze):
+        from src.investor import bot_engine
+        bot_engine._state.portfolio_cash = 5_000.0
+        bot_engine._state.portfolio_value = 11_000.0
+        from src.investor.bot_engine import _snapshot_portfolio
+        _snapshot_portfolio("pid")
+        assert bot_engine._state.portfolio_cash == pytest.approx(5_000.0)
+        assert bot_engine._state.portfolio_value == pytest.approx(11_000.0)
