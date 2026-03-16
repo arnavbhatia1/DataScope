@@ -169,6 +169,12 @@ class TestCheckVix:
         from src.investor.bot_engine import _check_vix
         assert _check_vix() is False
 
+    @patch("src.investor.bot_engine.get_vix_analysis",
+           return_value={"vix": 30})
+    def test_returns_false_when_vix_exactly_30(self, mock):
+        from src.investor.bot_engine import _check_vix
+        assert _check_vix() is False
+
 
 class TestCheckExits:
     def setup_method(self):
@@ -237,3 +243,18 @@ class TestCheckExits:
         _check_exits("pid", threading.Event())
         assert "TSLA" in bot_engine._state.pending_sells
         assert "TSLA" in bot_engine._state.open_positions  # not removed on fail
+
+    @patch("src.investor.bot_engine.execute_sell")
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"error": "timeout"})
+    def test_skips_exit_when_score_is_zero(self, mock_analyze, mock_sell):
+        from src.investor import bot_engine
+        from datetime import datetime
+        bot_engine._state.open_positions["AMD"] = {
+            "entry_price": 120.0, "shares": 5, "entry_score": 75.0,
+            "entry_time": datetime.now(), "current_price": 120.0, "current_score": 75.0,
+        }
+        from src.investor.bot_engine import _check_exits
+        _check_exits("pid", threading.Event())
+        assert "AMD" in bot_engine._state.open_positions  # position kept
+        mock_sell.assert_not_called()  # no sell attempted

@@ -108,7 +108,7 @@ def _check_vix() -> bool:
     try:
         data = get_vix_analysis()
         vix = data.get("vix")
-        return isinstance(vix, (int, float)) and vix > 30
+        return isinstance(vix, (int, float)) and not isinstance(vix, bool) and vix > 30
     except Exception as e:
         logger.warning("VIX check failed: %s", e)
         return False
