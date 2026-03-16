@@ -45,10 +45,8 @@ MarketPulse/
 ├── src/
 │   ├── ingestion/
 │   │   ├── base.py                    # Abstract base ingester + REQUIRED_COLUMNS schema
-│   │   ├── news.py                    # Free RSS ingester (primary source, always available)
-│   │   ├── reddit.py                  # Optional: PRAW-based (skipped if no API keys)
-│   │   ├── stocktwits.py             # Optional: Stocktwits API (skipped if no API keys)
-│   │   └── manager.py                # Orchestrates sources; news RSS always succeeds
+│   │   ├── news.py                    # Free RSS ingester (always available, no API key)
+│   │   └── manager.py                # Orchestrates news RSS ingestion
 │   ├── labeling/
 │   │   ├── functions.py               # 16 keyword/emoji/structural labeling functions
 │   │   └── aggregator.py             # Confidence-weighted vote aggregation
@@ -110,7 +108,7 @@ Autonomous paper-trading scalp bot. Runs continuous cycles (no timer — immedia
 ANTHROPIC_API_KEY=...       # Optional — enables AI verdict (static fallback without it)
 ```
 
-News RSS is free — no keys needed. Reddit/Stocktwits keys are optional legacy sources (commented out in `.env.example`).
+News RSS is free — no keys needed.
 
 ---
 

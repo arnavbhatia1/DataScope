@@ -11,23 +11,17 @@ SAMPLE_TICKER_DATA = {
     'symbol': 'TSLA',
     'dominant_sentiment': 'bearish',
     'mention_count': 120,
-    'reddit_sentiment': 'bearish',
-    'news_sentiment': 'neutral',
-    'stocktwits_sentiment': 'bearish',
+    'news_sentiment': 'bearish',
     'sentiment_by_day': {
         '2026-03-05': 'neutral',
         '2026-03-06': 'bearish',
         '2026-03-07': 'bearish',
     },
     'top_posts': {
-        'reddit': [
-            {'text': 'TSLA puts loaded, P/E is insane', 'sentiment': 'bearish'},
-            {'text': 'Shorting TSLA at these levels', 'sentiment': 'bearish'},
-        ],
         'news': [
             {'text': 'Tesla reports Q3 deliveries at 435K units', 'sentiment': 'neutral'},
+            {'text': 'Tesla stock tumbles on delivery miss', 'sentiment': 'bearish'},
         ],
-        'stocktwits': [],
     },
 }
 

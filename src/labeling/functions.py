@@ -353,37 +353,6 @@ def lf_self_deprecating(text):
 
 
 # ============================================
-# SOURCE-AWARE FUNCTIONS (use metadata)
-# ============================================
-
-def lf_stocktwits_user_sentiment(text, metadata=None):
-    """
-    Stocktwits posts sometimes include user-submitted sentiment tags.
-    If available, use them as a labeling signal.
-    """
-    if metadata and metadata.get('user_sentiment'):
-        tag = metadata['user_sentiment'].lower()
-        if tag == 'bullish':
-            return BULLISH
-        if tag == 'bearish':
-            return BEARISH
-    return ABSTAIN
-
-
-def lf_reddit_flair(text, metadata=None):
-    """
-    Reddit post flairs provide weak signal about content type.
-    """
-    if metadata and metadata.get('flair'):
-        flair = metadata['flair'].lower()
-        if flair in ['yolo', 'loss', 'meme']:
-            return MEME
-        if flair in ['discussion', 'news', 'dd']:
-            return NEUTRAL
-    return ABSTAIN
-
-
-# ============================================
 # REGISTRY
 # ============================================
 
@@ -406,7 +375,4 @@ LABELING_FUNCTIONS = [
     lf_self_deprecating,
 ]
 
-METADATA_FUNCTIONS = [
-    lf_stocktwits_user_sentiment,
-    lf_reddit_flair,
-]
+METADATA_FUNCTIONS = []

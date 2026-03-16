@@ -47,20 +47,16 @@ def sample_posts():
 def sample_df(sample_posts):
     """DataFrame with all required columns from BaseIngester schema."""
     rows = []
-    sources = ['reddit', 'reddit', 'stocktwits',
-               'reddit', 'stocktwits',
-               'reddit', 'news',
-               'reddit', 'reddit', 'reddit']
-    for i, (text, source) in enumerate(zip(sample_posts, sources)):
+    for i, text in enumerate(sample_posts):
         rows.append({
             'post_id': f'test_{i}',
             'text': text,
-            'source': source,
+            'source': 'news',
             'timestamp': '2026-02-28T12:00:00',
             'author': f'user_{i}',
             'score': i * 10,
             'url': f'https://example.com/{i}',
-            'metadata': str({'subreddit': 'wallstreetbets'} if source == 'reddit' else {}),
+            'metadata': str({}),
         })
     return pd.DataFrame(rows)
 

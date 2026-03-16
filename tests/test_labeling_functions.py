@@ -15,7 +15,6 @@ from src.labeling.functions import (
     lf_question_structure, lf_short_post, lf_all_caps_ratio,
     lf_options_directional, lf_price_target_mention, lf_loss_reporting,
     lf_news_language, lf_sarcasm_indicators, lf_self_deprecating,
-    lf_stocktwits_user_sentiment, lf_reddit_flair,
     LABELING_FUNCTIONS, METADATA_FUNCTIONS,
 )
 
@@ -228,34 +227,6 @@ class TestSelfDeprecating:
         assert lf_self_deprecating("Smart investment decision") == ABSTAIN
 
 
-# ── Metadata functions ─────────────────────────────────────────
-
-class TestStocktwitsUserSentiment:
-    def test_bullish_tag(self):
-        assert lf_stocktwits_user_sentiment("text", metadata={'user_sentiment': 'Bullish'}) == BULLISH
-
-    def test_bearish_tag(self):
-        assert lf_stocktwits_user_sentiment("text", metadata={'user_sentiment': 'Bearish'}) == BEARISH
-
-    def test_no_metadata(self):
-        assert lf_stocktwits_user_sentiment("text") == ABSTAIN
-
-    def test_no_sentiment(self):
-        assert lf_stocktwits_user_sentiment("text", metadata={}) == ABSTAIN
-
-
-class TestRedditFlair:
-    def test_yolo_flair(self):
-        assert lf_reddit_flair("text", metadata={'flair': 'YOLO'}) == MEME
-
-    def test_dd_flair(self):
-        assert lf_reddit_flair("text", metadata={'flair': 'DD'}) == NEUTRAL
-
-    def test_no_flair(self):
-        assert lf_reddit_flair("text", metadata={}) == ABSTAIN
-
-    def test_no_metadata(self):
-        assert lf_reddit_flair("text") == ABSTAIN
 
 
 # ── Registry sanity ────────────────────────────────────────────
@@ -265,7 +236,7 @@ class TestRegistry:
         assert len(LABELING_FUNCTIONS) == 16
 
     def test_metadata_functions_count(self):
-        assert len(METADATA_FUNCTIONS) == 2
+        assert len(METADATA_FUNCTIONS) == 0
 
     def test_all_return_valid_values(self, sample_posts):
         valid = {BULLISH, BEARISH, NEUTRAL, MEME, ABSTAIN}

@@ -32,8 +32,6 @@ FUNCTION_WEIGHTS = {
     'lf_emoji_bearish': 1.0,
     'lf_emoji_meme': 1.0,
     'lf_short_post': 1.0,
-    'lf_stocktwits_user_sentiment': 2.5,
-    'lf_reddit_flair': 1.5,
 }
 
 

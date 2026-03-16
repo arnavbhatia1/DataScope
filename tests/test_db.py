@@ -24,16 +24,16 @@ def tmp_db(monkeypatch, tmp_path):
 def sample_df():
     return pd.DataFrame([
         {
-            'post_id': 'reddit_wsb_001',
-            'text': 'Loading NVDA calls, bullish af 🚀',
-            'source': 'reddit',
+            'post_id': 'news_nvda_001',
+            'text': 'NVIDIA earnings beat expectations, stock surges',
+            'source': 'news',
             'timestamp': '2026-03-07 10:00:00',
-            'author': 'user1',
-            'score': 42,
+            'author': 'Reuters',
+            'score': 0,
             'tickers': ['NVIDIA'],
             'sentiment': 'bullish',
             'confidence': 0.82,
-            'url': '',
+            'url': 'https://example.com/nvda',
         },
         {
             'post_id': 'news_001',
@@ -68,11 +68,11 @@ def test_save_and_load_posts(tmp_db, sample_df):
     save_posts(sample_df)
     result = load_posts()
     assert len(result) == 2
-    assert set(result['post_id']) == {'reddit_wsb_001', 'news_001'}
-    reddit_row = result[result['post_id'] == 'reddit_wsb_001'].iloc[0]
-    assert reddit_row['tickers'] == ['NVIDIA']  # JSON round-trip
-    assert reddit_row['sentiment'] == 'bullish'
-    assert abs(reddit_row['confidence'] - 0.82) < 0.001
+    assert set(result['post_id']) == {'news_nvda_001', 'news_001'}
+    nvda_row = result[result['post_id'] == 'news_nvda_001'].iloc[0]
+    assert nvda_row['tickers'] == ['NVIDIA']  # JSON round-trip
+    assert nvda_row['sentiment'] == 'bullish'
+    assert abs(nvda_row['confidence'] - 0.82) < 0.001
 
 
 def test_save_posts_empty_df(tmp_db):
@@ -88,7 +88,7 @@ def test_load_posts_filters_by_date(tmp_db, sample_df):
     save_posts(sample_df)
     result = load_posts(start_date='2026-03-07', end_date='2026-03-07')
     assert len(result) == 1
-    assert result.iloc[0]['post_id'] == 'reddit_wsb_001'
+    assert result.iloc[0]['post_id'] == 'news_nvda_001'
 
 
 def test_save_posts_upserts(tmp_db, sample_df):
@@ -107,11 +107,9 @@ def test_save_and_load_ticker_cache(tmp_db):
             'symbol': 'TSLA',
             'dominant_sentiment': 'bearish',
             'mention_count': 45,
-            'reddit_sentiment': 'bearish',
-            'news_sentiment': 'neutral',
-            'stocktwits_sentiment': 'bearish',
+            'news_sentiment': 'bearish',
             'sentiment_by_day': {'2026-03-07': 'bearish'},
-            'top_posts': {'reddit': [{'text': 'TSLA puts loaded', 'sentiment': 'bearish'}]},
+            'top_posts': {'news': [{'text': 'Tesla stock drops on delivery miss', 'sentiment': 'bearish'}]},
         }
     }
     save_ticker_cache(ticker_results)
