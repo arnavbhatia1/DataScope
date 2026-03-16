@@ -97,3 +97,103 @@ def _get_composite_score(analysis: dict) -> float:
         return float(raw)
     except (TypeError, ValueError):
         return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Cycle step stub — replaced in Task 3
+# ---------------------------------------------------------------------------
+
+def _run_cycle(portfolio_id: str, stop_event: threading.Event) -> None:
+    """Execute one full trading cycle. Implemented in Task 3."""
+    pass
+
+
+# ---------------------------------------------------------------------------
+# BotEngine — controls the background loop
+# ---------------------------------------------------------------------------
+
+class BotEngine:
+    """Start/stop the background trading thread."""
+
+    def __init__(self):
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    def start(self) -> None:
+        """Start the bot. Creates ScalpBot portfolio on first run."""
+        with _lock:
+            if _state.is_running:
+                return
+
+        if _state.portfolio_id is None:
+            result = create_portfolio(
+                starting_capital=10_000,
+                risk_profile="aggressive",
+                investment_horizon="short",
+                name="ScalpBot",
+            )
+            if "error" not in result:
+                with _lock:
+                    _state.portfolio_id = result["portfolio_id"]
+                logger.info("Created ScalpBot portfolio: %s", _state.portfolio_id)
+            else:
+                logger.error("Portfolio creation failed: %s", result["error"])
+                return
+
+        self._stop_event.clear()
+        with _lock:
+            _state.is_running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+        logger.info("Bot started")
+
+    def stop(self) -> None:
+        """Signal graceful shutdown after current cycle completes."""
+        self._stop_event.set()
+        with _lock:
+            _state.is_running = False
+        logger.info("Bot stop signaled")
+
+    def is_running(self) -> bool:
+        return (
+            _state.is_running
+            and self._thread is not None
+            and self._thread.is_alive()
+        )
+
+    def _loop(self) -> None:
+        from datetime import timedelta
+
+        # Capture portfolio_id once under lock before the loop begins.
+        # portfolio_id is only set in start() before this thread is created,
+        # so it's safe to read once and reuse for all cycles.
+        with _lock:
+            portfolio_id = _state.portfolio_id
+
+        while not self._stop_event.is_set():
+            with _lock:
+                _state.cycle_count += 1
+                _state.last_cycle_time = datetime.now()
+            try:
+                _run_cycle(portfolio_id, self._stop_event)
+            except Exception as e:
+                logger.error("Cycle error: %s", e, exc_info=True)
+            with _lock:
+                _state.next_cycle_time = datetime.now() + timedelta(seconds=CYCLE_INTERVAL)
+            # Sleep CYCLE_INTERVAL seconds, wake every second to check stop
+            for _ in range(CYCLE_INTERVAL):
+                if self._stop_event.is_set():
+                    break
+                time.sleep(1)
+
+        with _lock:
+            _state.is_running = False
+        logger.info("Bot loop exited")
+
+
+_engine = BotEngine()
+
+
+def get_engine() -> BotEngine:
+    """Return the global BotEngine singleton."""
+    return _engine

@@ -67,3 +67,73 @@ class TestGetCompositeScore:
     def test_returns_zero_when_score_is_zero(self):
         from src.investor.bot_engine import _get_composite_score
         assert _get_composite_score({"score": {"score": 0}}) == 0.0
+
+
+def _reset_state():
+    """Reset module-level state between tests."""
+    from src.investor import bot_engine
+    bot_engine._state.is_running = False
+    bot_engine._state.portfolio_id = None
+    bot_engine._state.cycle_count = 0
+    bot_engine._state.open_positions = {}
+    bot_engine._state.pending_sells = set()
+    bot_engine._state.trade_log = []
+    bot_engine._engine._stop_event.set()
+
+
+class TestBotEngine:
+    def setup_method(self):
+        _reset_state()
+
+    def teardown_method(self):
+        from src.investor.bot_engine import get_engine
+        get_engine().stop()
+        _time.sleep(0.1)
+
+    def test_get_engine_returns_same_instance(self):
+        from src.investor.bot_engine import get_engine
+        assert get_engine() is get_engine()
+
+    def test_not_running_initially(self):
+        from src.investor.bot_engine import get_engine
+        assert get_engine().is_running() is False
+
+    @patch("src.investor.bot_engine.create_portfolio",
+           return_value={"portfolio_id": "test-pid"})
+    @patch("src.investor.bot_engine._run_cycle")
+    def test_start_sets_running(self, mock_cycle, mock_create):
+        from src.investor.bot_engine import get_engine, get_state
+        get_engine().start()
+        _time.sleep(0.15)
+        assert get_state().is_running is True
+
+    @patch("src.investor.bot_engine.create_portfolio",
+           return_value={"portfolio_id": "test-pid"})
+    @patch("src.investor.bot_engine._run_cycle")
+    def test_stop_clears_running(self, mock_cycle, mock_create):
+        from src.investor.bot_engine import get_engine, get_state
+        get_engine().start()
+        _time.sleep(0.1)
+        get_engine().stop()
+        _time.sleep(0.2)
+        # stop() directly sets is_running=False under _lock, so this passes
+        # immediately — it does not wait for the _loop thread to exit.
+        assert get_state().is_running is False
+
+    @patch("src.investor.bot_engine.create_portfolio",
+           return_value={"error": "server down"})
+    def test_start_aborts_when_portfolio_creation_fails(self, mock_create):
+        from src.investor.bot_engine import get_engine, get_state
+        get_engine().start()
+        _time.sleep(0.1)
+        assert get_state().is_running is False
+
+    @patch("src.investor.bot_engine.create_portfolio")
+    @patch("src.investor.bot_engine._run_cycle")
+    def test_start_reuses_existing_portfolio_id(self, mock_cycle, mock_create):
+        from src.investor import bot_engine
+        bot_engine._state.portfolio_id = "already-set"
+        bot_engine.get_engine().start()
+        _time.sleep(0.1)
+        assert mock_create.call_count == 0
+        assert bot_engine._state.portfolio_id == "already-set"
