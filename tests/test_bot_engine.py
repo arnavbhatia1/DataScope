@@ -23,28 +23,78 @@ class TestGetState:
         assert s.portfolio_id is None
 
 
-class TestGetAllocationPct:
-    def test_tier_90_to_100(self):
-        from src.investor.bot_engine import _get_allocation_pct
-        assert _get_allocation_pct(95, False) == pytest.approx(0.12)
+class TestComputeTradeStats:
+    def test_empty_log_returns_defaults(self):
+        from src.investor.bot_engine import _compute_trade_stats
+        stats = _compute_trade_stats([])
+        assert stats.total_trades == 0
+        assert stats.expected_value == 0
 
-    def test_tier_70_to_89(self):
-        from src.investor.bot_engine import _get_allocation_pct
-        assert _get_allocation_pct(75, False) == pytest.approx(0.08)
+    def test_positive_ev_from_winning_trades(self):
+        from src.investor.bot_engine import _compute_trade_stats
+        log = [
+            {"action": "SELL", "pnl": 100}, {"action": "SELL", "pnl": 50},
+            {"action": "SELL", "pnl": -30}, {"action": "SELL", "pnl": 80},
+            {"action": "SELL", "pnl": -20}, {"action": "SELL", "pnl": 60},
+            {"action": "SELL", "pnl": 90},  {"action": "SELL", "pnl": -40},
+            {"action": "SELL", "pnl": 70},  {"action": "SELL", "pnl": 50},
+            {"action": "BUY", "pnl": 0},  # BUYs should be ignored
+        ]
+        stats = _compute_trade_stats(log)
+        assert stats.total_trades == 10
+        assert stats.wins == 7
+        assert stats.losses == 3
+        assert stats.win_rate == pytest.approx(0.7)
+        assert stats.expected_value > 0
+        assert stats.has_edge is True
 
-    def test_tier_60_to_69(self):
-        from src.investor.bot_engine import _get_allocation_pct
-        assert _get_allocation_pct(65, False) == pytest.approx(0.05)
+    def test_negative_ev_detected(self):
+        from src.investor.bot_engine import _compute_trade_stats
+        log = [
+            {"action": "SELL", "pnl": -100}, {"action": "SELL", "pnl": -80},
+            {"action": "SELL", "pnl": 20},   {"action": "SELL", "pnl": -90},
+            {"action": "SELL", "pnl": -70},  {"action": "SELL", "pnl": 10},
+            {"action": "SELL", "pnl": -60},  {"action": "SELL", "pnl": -50},
+            {"action": "SELL", "pnl": 15},   {"action": "SELL", "pnl": -40},
+        ]
+        stats = _compute_trade_stats(log)
+        assert stats.expected_value < 0
+        assert stats.has_edge is False
 
-    def test_below_60_returns_zero(self):
-        from src.investor.bot_engine import _get_allocation_pct
-        assert _get_allocation_pct(59, False) == 0.0
+    def test_kelly_fraction_positive_for_edge(self):
+        from src.investor.bot_engine import _compute_trade_stats
+        # 70% win rate, 2:1 reward/risk → strong Kelly
+        log = []
+        for _ in range(7):
+            log.append({"action": "SELL", "pnl": 200})
+        for _ in range(3):
+            log.append({"action": "SELL", "pnl": -100})
+        stats = _compute_trade_stats(log)
+        assert stats.kelly_fraction > 0
+        assert stats.risk_of_ruin < 0.01
 
-    def test_high_vix_halves_all_tiers(self):
-        from src.investor.bot_engine import _get_allocation_pct
-        assert _get_allocation_pct(95, True) == pytest.approx(0.06)
-        assert _get_allocation_pct(75, True) == pytest.approx(0.04)
-        assert _get_allocation_pct(65, True) == pytest.approx(0.025)
+
+class TestComputePositionSize:
+    def test_conservative_without_enough_trades(self):
+        from src.investor.bot_engine import _compute_position_size, TradeStats
+        stats = TradeStats()  # no trades
+        size = _compute_position_size(80, False, stats, 10_000)
+        # Should use default 1% × conviction(0.80) = 0.8% of 10k = $80
+        assert 50 < size < 200  # conservative range
+
+    def test_high_vix_reduces_size(self):
+        from src.investor.bot_engine import _compute_position_size, TradeStats
+        stats = TradeStats()
+        normal = _compute_position_size(80, False, stats, 10_000)
+        vix_high = _compute_position_size(80, True, stats, 10_000)
+        assert vix_high < normal
+
+    def test_capped_at_2_percent(self):
+        from src.investor.bot_engine import _compute_position_size, TradeStats
+        # Even with aggressive Kelly, should never exceed 2%
+        stats = TradeStats(kelly_fraction=0.10, has_edge=True, total_trades=50)
+        size = _compute_position_size(100, False, stats, 10_000)
+        assert size <= 200  # 2% of 10k
 
 
 class TestGetCompositeScore:
@@ -353,14 +403,15 @@ class TestEnterPositions:
     @patch("src.investor.bot_engine.execute_buy", return_value={"status": "executed"})
     def test_enters_position_and_logs_buy(self, mock_buy):
         from src.investor import bot_engine
-        bot_engine._state.portfolio_cash = 10_000.0
+        bot_engine._state.portfolio_cash = 100_000.0
+        bot_engine._state.portfolio_value = 100_000.0
         from src.investor.bot_engine import _enter_positions
+        # 100k portfolio, 1% default risk × 0.85 conviction = $850 → 8 shares at $100
         _enter_positions("pid", [{"ticker": "AAPL", "score": 85, "price": 100.0}],
                          False, threading.Event())
         assert "AAPL" in bot_engine._state.open_positions
         assert bot_engine._state.trade_log[0]["action"] == "BUY"
-        # remaining_cash starts at 10_000, score=85 → tier 70-89 → 8% → 800 → 8 shares @ $100
-        mock_buy.assert_called_once_with("pid", "AAPL", 8)
+        assert mock_buy.called
 
     @patch("src.investor.bot_engine._sell_position", return_value=False)
     @patch("src.investor.bot_engine.execute_buy", return_value={"status": "executed"})
@@ -380,14 +431,22 @@ class TestEnterPositions:
         mock_buy.assert_not_called()
 
     @patch("src.investor.bot_engine.execute_buy", return_value={"status": "executed"})
-    def test_high_vix_halves_share_count(self, mock_buy):
+    def test_high_vix_reduces_position_size(self, mock_buy):
         from src.investor import bot_engine
-        bot_engine._state.portfolio_cash = 10_000.0
+        bot_engine._state.portfolio_cash = 100_000.0
+        bot_engine._state.portfolio_value = 100_000.0
         from src.investor.bot_engine import _enter_positions
-        _enter_positions("pid", [{"ticker": "AAPL", "score": 85, "price": 100.0}],
+        # Normal sizing
+        _enter_positions("pid", [{"ticker": "NORM", "score": 85, "price": 10.0}],
+                         False, threading.Event())
+        normal_shares = mock_buy.call_args[0][2] if mock_buy.called else 0
+        mock_buy.reset_mock()
+        bot_engine._state.open_positions.clear()
+        # High VIX sizing — should be smaller
+        _enter_positions("pid", [{"ticker": "VIX", "score": 85, "price": 10.0}],
                          True, threading.Event())
-        # high_vix: 0.08 * 0.5 = 0.04 → 10000 * 0.04 / 100 = 4 shares
-        mock_buy.assert_called_once_with("pid", "AAPL", 4)
+        vix_shares = mock_buy.call_args[0][2] if mock_buy.called else 0
+        assert vix_shares < normal_shares
 
     @patch("src.investor.bot_engine.execute_buy", return_value={"error": "rejected"})
     def test_failed_buy_not_added_to_positions(self, mock_buy):

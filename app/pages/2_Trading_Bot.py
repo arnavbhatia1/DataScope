@@ -271,6 +271,70 @@ def _bot_live_panel():
         with col_npos:
             st.metric("Open Positions", f"{len(state.open_positions)} / {MAX_POSITIONS}")
 
+        # -- Quant stats (the math that matters) ------------------------------
+        s = state.stats
+        if s.total_trades > 0:
+            st.markdown("##### Edge Statistics")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1:
+                ev_color = "#00C853" if s.expected_value > 0 else "#FF1744"
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">EV/Trade</div>'
+                    f'<div style="color:{ev_color};font-size:1.2rem;font-weight:700">${s.expected_value:+.2f}</div>'
+                    f'</div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">Win Rate</div>'
+                    f'<div style="color:#E6EDF3;font-size:1.2rem;font-weight:700">{s.win_rate*100:.0f}%</div>'
+                    f'</div>', unsafe_allow_html=True)
+            with c3:
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">R:R Ratio</div>'
+                    f'<div style="color:#E6EDF3;font-size:1.2rem;font-weight:700">{s.reward_risk_ratio:.2f}</div>'
+                    f'</div>', unsafe_allow_html=True)
+            with c4:
+                kelly_display = f"{s.kelly_fraction*100:.2f}%" if s.kelly_fraction > 0 else "N/A"
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">½ Kelly</div>'
+                    f'<div style="color:#E6EDF3;font-size:1.2rem;font-weight:700">{kelly_display}</div>'
+                    f'</div>', unsafe_allow_html=True)
+            with c5:
+                ruin_color = "#00C853" if s.risk_of_ruin < 0.01 else ("#FFD600" if s.risk_of_ruin < 0.05 else "#FF1744")
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">Risk of Ruin</div>'
+                    f'<div style="color:{ruin_color};font-size:1.2rem;font-weight:700">{s.risk_of_ruin*100:.4f}%</div>'
+                    f'</div>', unsafe_allow_html=True)
+
+            # Second row: trades, streak, stddev
+            c6, c7, c8 = st.columns(3)
+            with c6:
+                edge_label = "HAS EDGE" if s.has_edge else (f"NEED {10 - s.total_trades}+ TRADES" if s.total_trades < 10 else "NO EDGE")
+                edge_color = "#00C853" if s.has_edge else "#FFD600"
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">Edge ({s.total_trades} trades)</div>'
+                    f'<div style="color:{edge_color};font-size:0.9rem;font-weight:700">{edge_label}</div>'
+                    f'</div>', unsafe_allow_html=True)
+            with c7:
+                streak_color = "#00C853" if s.current_streak > 0 else "#FF1744"
+                streak_label = f"{'W' if s.current_streak > 0 else 'L'}{abs(s.current_streak)}"
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">Streak</div>'
+                    f'<div style="color:{streak_color};font-size:1.2rem;font-weight:700">{streak_label}</div>'
+                    f'</div>', unsafe_allow_html=True)
+            with c8:
+                st.markdown(
+                    f'<div style="text-align:center">'
+                    f'<div style="color:#8B949E;font-size:0.75rem">Std Dev (σ)</div>'
+                    f'<div style="color:#E6EDF3;font-size:1.2rem;font-weight:700">${s.std_dev:.2f}</div>'
+                    f'</div>', unsafe_allow_html=True)
+
         # -- Open positions table ---------------------------------------------
         if state.open_positions:
             st.markdown("##### Open Positions")
