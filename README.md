@@ -48,14 +48,7 @@ User searches ticker → Claude writes 2-3 sentence verdict → briefing card
 ## CLI
 
 ```bash
-# Full pipeline (ingest → label → analyze → store → train)
-python3 scripts/run_pipeline.py
-
-# With custom lookback
-python3 scripts/run_pipeline.py --days 14
-
-# Tests
-python3 -m pytest tests/ -v
+.\start.bat
 ```
 
 ## Tech Stack
