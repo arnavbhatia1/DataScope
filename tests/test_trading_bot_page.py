@@ -49,7 +49,7 @@ class TestMergeMovers:
 class TestBotEngineImport:
     def test_bot_engine_importable(self):
         from src.investor.bot_engine import get_state, get_engine, MAX_POSITIONS
-        assert MAX_POSITIONS == 5
+        assert MAX_POSITIONS == 20
 
     def test_get_state_has_expected_fields(self):
         from src.investor.bot_engine import get_state

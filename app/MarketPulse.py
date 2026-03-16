@@ -7,7 +7,7 @@ Run: streamlit run app/MarketPulse.py
 import html as html_mod
 import re
 import streamlit as st
-import sys, os, json
+import sys, os
 from datetime import date, timedelta
 from dotenv import load_dotenv
 
