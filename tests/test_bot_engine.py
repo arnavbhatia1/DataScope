@@ -1,9 +1,9 @@
 # tests/test_bot_engine.py
 """Tests for autonomous scalp trading bot engine."""
-import threading
-import time as _time
+import threading       # used by Tasks 2-5
+import time as _time   # used by Tasks 2-5
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch  # used by Tasks 2-5
 
 
 class TestGetState:
@@ -63,3 +63,7 @@ class TestGetCompositeScore:
     def test_returns_zero_when_score_is_none(self):
         from src.investor.bot_engine import _get_composite_score
         assert _get_composite_score({"score": {"score": None}}) == 0.0
+
+    def test_returns_zero_when_score_is_zero(self):
+        from src.investor.bot_engine import _get_composite_score
+        assert _get_composite_score({"score": {"score": 0}}) == 0.0
