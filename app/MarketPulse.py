@@ -264,11 +264,13 @@ if not ticker_results:
         "No market data yet. Click **Refresh Data** in the sidebar to ingest and analyze."
     )
 else:
-    st.markdown("### Market Overview")
+    # Top 50 tickers by mention count (already sorted desc from DB)
+    top_tickers = dict(list(ticker_results.items())[:50])
+    st.markdown(f"### Market Overview ({len(top_tickers)} tickers)")
 
     # Ticker card grid
     cols = st.columns(3)
-    for i, (company, data) in enumerate(ticker_results.items()):
+    for i, (company, data) in enumerate(top_tickers.items()):
         sentiment = data.get('dominant_sentiment', 'neutral')
         symbol = data.get('symbol', company.upper())
         mentions = data.get('mention_count', 0)

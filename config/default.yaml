@@ -19,10 +19,17 @@ ingestion:
     symbols: ["AAPL", "TSLA", "NVDA", "GME", "AMC", "SPY", "MSFT", "AMZN"]
     limit_per_symbol: 50
   news:
-    query_terms: ["stock market", "earnings", "IPO", "SEC", "Fed"]
-    symbols: ["AAPL", "TSLA", "NVDA", "GME", "AMC", "SPY", "MSFT", "AMZN",
-              "META", "NFLX", "AMD", "INTC", "GOOG", "DIS", "COIN", "HOOD",
-              "PLTR", "NIO", "SOFI", "QQQ"]
+    query_terms: ["stock market", "earnings", "IPO", "SEC", "Fed",
+                  "Wall Street", "S&P 500", "Nasdaq", "Dow Jones",
+                  "tech stocks", "AI stocks", "energy stocks", "bank stocks"]
+    symbols: [
+      "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "JPM", "V",
+      "UNH", "XOM", "LLY", "MA", "HD", "PG", "COST", "JNJ", "MRK", "ABBV",
+      "CVX", "BAC", "WMT", "KO", "NFLX", "PEP", "DIS", "ADBE", "AMD", "INTC",
+      "CRM", "PYPL", "QCOM", "TXN", "CSCO", "NEE", "RTX", "CAT", "GS", "AMGN",
+      "T", "VZ", "PFE", "BMY", "SBUX", "DE", "GE", "F", "GME", "AMC",
+      "SPY", "QQQ", "COIN", "HOOD", "PLTR", "NIO", "SOFI", "RIVN", "LCID", "SNAP"
+    ]
     additional_feeds:
       - url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
         name: "cnbc_markets"
