@@ -1,9 +1,17 @@
 """Trading Bot — Full trading terminal powered by financial-mcp-server."""
 
+import time as _time
+
 import streamlit as st
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+
+from src.investor.bot_engine import (
+    get_state as _get_bot_state,
+    get_engine as _get_engine,
+    MAX_POSITIONS,
+)
 
 st.set_page_config(page_title="Trading Bot", page_icon="\U0001F4C8", layout="wide")
 
@@ -375,10 +383,6 @@ else:
 # ==============================================================================
 # ZONE 4: BOT CONTROL
 # ==============================================================================
-
-import time as _time
-
-from src.investor.bot_engine import get_state as _get_bot_state, get_engine as _get_engine, MAX_POSITIONS
 
 st.divider()
 st.markdown("#### Bot Control")
