@@ -44,3 +44,18 @@ class TestMergeMovers:
             sym = item["symbol"]
             movers[sym] = {"symbol": sym, "badges": [], "score": item["total_score"]}
         assert movers["AAPL"]["score"] == 5
+
+
+class TestBotEngineImport:
+    def test_bot_engine_importable(self):
+        from src.investor.bot_engine import get_state, get_engine, MAX_POSITIONS
+        assert MAX_POSITIONS == 5
+
+    def test_get_state_has_expected_fields(self):
+        from src.investor.bot_engine import get_state
+        s = get_state()
+        assert hasattr(s, "is_running")
+        assert hasattr(s, "open_positions")
+        assert hasattr(s, "trade_log")
+        assert hasattr(s, "portfolio_value")
+        assert hasattr(s, "total_pnl")

@@ -3,6 +3,7 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 
 st.set_page_config(page_title="Trading Bot", page_icon="\U0001F4C8", layout="wide")
 
@@ -369,3 +370,115 @@ else:
                 st.metric("Max Drawdown", f"{perf.get('max_drawdown', 0) * 100:.2f}%")
             with perf_cols[3]:
                 st.metric("Daily Return", f"{perf.get('daily_return', 0) * 100:.2f}%")
+
+
+# ==============================================================================
+# ZONE 4: BOT CONTROL
+# ==============================================================================
+
+import time as _time
+
+from src.investor.bot_engine import get_state as _get_bot_state, get_engine as _get_engine, MAX_POSITIONS
+
+st.divider()
+st.markdown("#### Bot Control")
+
+_bot_state = _get_bot_state()
+_engine = _get_engine()
+
+# -- Start / Stop + Status row ------------------------------------------------
+col_btn, col_status, col_timer = st.columns([1, 1, 2])
+
+with col_btn:
+    if _bot_state.is_running:
+        if st.button("Stop Bot", type="secondary", key="bot_stop"):
+            _engine.stop()
+            st.rerun()
+    else:
+        if st.button("Start Bot", type="primary", key="bot_start"):
+            _engine.start()
+            st.rerun()
+
+with col_status:
+    if _bot_state.is_running:
+        st.markdown(
+            '<span style="color:#00C853;font-weight:700;font-size:1rem">● RUNNING</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<span style="color:#8B949E;font-weight:700;font-size:1rem">● STOPPED</span>',
+            unsafe_allow_html=True,
+        )
+
+with col_timer:
+    if _bot_state.next_cycle_time and _bot_state.is_running:
+        remaining = (_bot_state.next_cycle_time - datetime.now()).total_seconds()
+        if remaining > 0:
+            mins, secs = divmod(int(remaining), 60)
+            st.caption(
+                f"Next cycle in **{mins}m {secs:02d}s** · Cycle #{_bot_state.cycle_count}"
+            )
+        else:
+            st.caption(f"Cycle #{_bot_state.cycle_count} — running now...")
+
+# -- Portfolio metrics --------------------------------------------------------
+if _bot_state.portfolio_id:
+    col_pv, col_pnl, col_npos = st.columns(3)
+    with col_pv:
+        st.metric("Portfolio Value", f"${_bot_state.portfolio_value:,.2f}")
+    with col_pnl:
+        pnl = _bot_state.total_pnl
+        st.metric("Total P&L", f"${pnl:+,.2f}")
+    with col_npos:
+        st.metric("Open Positions", f"{len(_bot_state.open_positions)} / {MAX_POSITIONS}")
+
+    # -- Open positions table -------------------------------------------------
+    if _bot_state.open_positions:
+        st.markdown("##### Open Positions")
+        rows = []
+        for ticker, pos in _bot_state.open_positions.items():
+            entry = pos["entry_price"]
+            current = pos.get("current_price", entry)
+            pnl_pct = (current - entry) / entry * 100 if entry > 0 else 0
+            pnl_amt = (current - entry) * pos["shares"]
+            rows.append({
+                "Ticker": ticker,
+                "Entry": f"${entry:.2f}",
+                "Current": f"${current:.2f}",
+                "P&L %": f"{pnl_pct:+.2f}%",
+                "P&L $": f"${pnl_amt:+.2f}",
+                "Score": f"{pos.get('current_score', pos['entry_score']):.0f}",
+                "Since": pos["entry_time"].strftime("%H:%M"),
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+    # -- Activity log ---------------------------------------------------------
+    if _bot_state.trade_log:
+        st.markdown("##### Activity Log")
+        with st.expander(
+            f"Recent trades ({len(_bot_state.trade_log)})", expanded=True
+        ):
+            for entry in _bot_state.trade_log[:50]:
+                color = "#00C853" if entry["action"] == "BUY" else "#FF1744"
+                pnl_str = (
+                    f" &nbsp;|&nbsp; P&L: ${entry['pnl']:+.2f}"
+                    if entry["action"] == "SELL"
+                    else ""
+                )
+                st.markdown(
+                    f"<small style='color:#8B949E'>[{entry['time']}]</small> "
+                    f"<span style='color:{color};font-weight:700'>{entry['action']}</span> "
+                    f"<b>{entry['ticker']}</b> {entry['shares']}sh "
+                    f"@ ${entry['price']:.2f} (score {entry['score']:.0f})"
+                    f"{pnl_str} — {entry['reason']}",
+                    unsafe_allow_html=True,
+                )
+
+# -- Auto-refresh (non-blocking) ----------------------------------------------
+if _bot_state.is_running:
+    _now = _time.time()
+    _last = st.session_state.get("bot_last_refresh", 0)
+    if _now - _last >= 10:
+        st.session_state["bot_last_refresh"] = _now
+        st.rerun()
