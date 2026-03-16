@@ -142,3 +142,98 @@ class TestBotEngine:
         _time.sleep(0.1)
         assert mock_create.call_count == 0
         assert bot_engine._state.portfolio_id == "already-set"
+
+
+class TestCheckVix:
+    @patch("src.investor.bot_engine.get_vix_analysis",
+           return_value={"vix": 35, "vix_signal": "fear"})
+    def test_returns_true_when_vix_above_30(self, mock):
+        from src.investor.bot_engine import _check_vix
+        assert _check_vix() is True
+
+    @patch("src.investor.bot_engine.get_vix_analysis",
+           return_value={"vix": 18, "vix_signal": "normal"})
+    def test_returns_false_when_vix_normal(self, mock):
+        from src.investor.bot_engine import _check_vix
+        assert _check_vix() is False
+
+    @patch("src.investor.bot_engine.get_vix_analysis",
+           return_value={"vix": "N/A"})
+    def test_returns_false_when_vix_non_numeric(self, mock):
+        from src.investor.bot_engine import _check_vix
+        assert _check_vix() is False
+
+    @patch("src.investor.bot_engine.get_vix_analysis",
+           return_value={"error": "timeout"})
+    def test_returns_false_on_error(self, mock):
+        from src.investor.bot_engine import _check_vix
+        assert _check_vix() is False
+
+
+class TestCheckExits:
+    def setup_method(self):
+        _reset_state()
+
+    @patch("src.investor.bot_engine.execute_sell",
+           return_value={"status": "executed"})
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"price": 148.0, "score": {"score": 55.0}})
+    def test_exits_when_score_drops_30_percent(self, mock_analyze, mock_sell):
+        from src.investor import bot_engine
+        from datetime import datetime
+        bot_engine._state.open_positions["AAPL"] = {
+            "entry_price": 150.0, "shares": 10, "entry_score": 80.0,
+            "entry_time": datetime.now(), "current_price": 150.0, "current_score": 80.0,
+        }
+        from src.investor.bot_engine import _check_exits
+        _check_exits("pid", threading.Event())
+        assert "AAPL" not in bot_engine._state.open_positions
+        assert bot_engine._state.trade_log[0]["action"] == "SELL"
+        assert "dropped" in bot_engine._state.trade_log[0]["reason"]
+
+    @patch("src.investor.bot_engine.execute_sell",
+           return_value={"status": "executed"})
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"price": 148.0, "score": {"score": 35.0}})
+    def test_exits_when_score_below_absolute_threshold(self, mock_analyze, mock_sell):
+        from src.investor import bot_engine
+        from datetime import datetime
+        bot_engine._state.open_positions["MSFT"] = {
+            "entry_price": 300.0, "shares": 5, "entry_score": 50.0,
+            "entry_time": datetime.now(), "current_price": 300.0, "current_score": 50.0,
+        }
+        from src.investor.bot_engine import _check_exits
+        _check_exits("pid", threading.Event())
+        assert "MSFT" not in bot_engine._state.open_positions
+
+    @patch("src.investor.bot_engine.execute_sell",
+           return_value={"status": "executed"})
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"price": 155.0, "score": {"score": 75.0}})
+    def test_no_exit_when_score_holds(self, mock_analyze, mock_sell):
+        from src.investor import bot_engine
+        from datetime import datetime
+        bot_engine._state.open_positions["NVDA"] = {
+            "entry_price": 800.0, "shares": 2, "entry_score": 80.0,
+            "entry_time": datetime.now(), "current_price": 800.0, "current_score": 80.0,
+        }
+        from src.investor.bot_engine import _check_exits
+        _check_exits("pid", threading.Event())
+        assert "NVDA" in bot_engine._state.open_positions
+        mock_sell.assert_not_called()
+
+    @patch("src.investor.bot_engine.execute_sell",
+           return_value={"error": "network error"})
+    @patch("src.investor.bot_engine.analyze_ticker",
+           return_value={"price": 148.0, "score": {"score": 30.0}})
+    def test_failed_sell_added_to_pending_sells(self, mock_analyze, mock_sell):
+        from src.investor import bot_engine
+        from datetime import datetime
+        bot_engine._state.open_positions["TSLA"] = {
+            "entry_price": 200.0, "shares": 3, "entry_score": 80.0,
+            "entry_time": datetime.now(), "current_price": 200.0, "current_score": 80.0,
+        }
+        from src.investor.bot_engine import _check_exits
+        _check_exits("pid", threading.Event())
+        assert "TSLA" in bot_engine._state.pending_sells
+        assert "TSLA" in bot_engine._state.open_positions  # not removed on fail

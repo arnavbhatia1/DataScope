@@ -100,12 +100,276 @@ def _get_composite_score(analysis: dict) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Cycle step stub — replaced in Task 3
+# Cycle step functions
 # ---------------------------------------------------------------------------
 
+def _check_vix() -> bool:
+    """Returns True if VIX is numeric and > 30."""
+    try:
+        data = get_vix_analysis()
+        vix = data.get("vix")
+        return isinstance(vix, (int, float)) and vix > 30
+    except Exception as e:
+        logger.warning("VIX check failed: %s", e)
+        return False
+
+
+def _check_exits(portfolio_id: str, stop_event: threading.Event) -> None:
+    """Evaluate open positions; sell those where signal has reversed."""
+    with _lock:
+        positions = dict(_state.open_positions)
+
+    for ticker, pos in positions.items():
+        if stop_event.is_set():
+            return
+        analysis = analyze_ticker(ticker)
+        current_score = _get_composite_score(analysis)
+        current_price = (
+            analysis.get("price") or pos["entry_price"]
+            if "error" not in analysis
+            else pos["entry_price"]
+        )
+
+        # Always update current metrics in state
+        with _lock:
+            if ticker in _state.open_positions:
+                _state.open_positions[ticker]["current_price"] = current_price
+                _state.open_positions[ticker]["current_score"] = current_score
+
+        if current_score == 0:
+            logger.debug("Skipping exit check for %s — no score data", ticker)
+            continue
+
+        entry_score = pos["entry_score"]
+        should_exit = (
+            current_score < entry_score * (1 - EXIT_SCORE_DROP_THRESHOLD)
+            or current_score < EXIT_ABSOLUTE_THRESHOLD
+        )
+        if not should_exit:
+            continue
+
+        reason = (
+            f"score dropped {entry_score:.0f}→{current_score:.0f}"
+            if current_score >= EXIT_ABSOLUTE_THRESHOLD
+            else f"below threshold ({current_score:.0f})"
+        )
+        result = execute_sell(portfolio_id, ticker, pos["shares"])
+        pnl = round((current_price - pos["entry_price"]) * pos["shares"], 2)
+
+        if "error" not in result:
+            with _lock:
+                _state.open_positions.pop(ticker, None)
+                _state.trade_log.insert(0, {
+                    "time": datetime.now().strftime("%H:%M"),
+                    "action": "SELL",
+                    "ticker": ticker,
+                    "price": current_price,
+                    "shares": pos["shares"],
+                    "score": current_score,
+                    "reason": reason,
+                    "pnl": pnl,
+                })
+            logger.info("Exited %s: %s", ticker, reason)
+        else:
+            with _lock:
+                _state.pending_sells.add(ticker)
+            logger.warning("Sell failed for %s → pending: %s", ticker, result["error"])
+
+
+def _retry_pending_sells(portfolio_id: str, stop_event: threading.Event) -> None:
+    """Retry execute_sell for any tickers in pending_sells."""
+    with _lock:
+        pending = set(_state.pending_sells)
+    for ticker in pending:
+        if stop_event.is_set():
+            return
+        with _lock:
+            pos = _state.open_positions.get(ticker)
+        if pos is None:
+            with _lock:
+                _state.pending_sells.discard(ticker)
+            continue
+        result = execute_sell(portfolio_id, ticker, pos["shares"])
+        if "error" not in result:
+            current_price = pos.get("current_price", pos["entry_price"])
+            pnl = round((current_price - pos["entry_price"]) * pos["shares"], 2)
+            with _lock:
+                _state.pending_sells.discard(ticker)
+                _state.open_positions.pop(ticker, None)
+                _state.trade_log.insert(0, {
+                    "time": datetime.now().strftime("%H:%M"),
+                    "action": "SELL",
+                    "ticker": ticker,
+                    "price": current_price,
+                    "shares": pos["shares"],
+                    "score": pos.get("current_score", 0),
+                    "reason": "pending retry",
+                    "pnl": pnl,
+                })
+            logger.info("Pending sell completed: %s", ticker)
+        else:
+            logger.warning("Pending sell still failing for %s: %s", ticker, result["error"])
+
+
+def _scan_candidates(stop_event: threading.Event) -> list:
+    """Scan universe + anomalies + volume leaders. Returns deduped candidate symbols."""
+    raw: list = []
+
+    universe_result = scan_universe(DEFAULT_UNIVERSE)
+    if "error" not in universe_result:
+        for item in universe_result.get("scores", []):
+            sym = item.get("symbol", "")
+            if sym:
+                raw.append(sym)
+
+    if stop_event.is_set():
+        return []
+
+    anomaly_result = scan_anomalies(DEFAULT_UNIVERSE)
+    if "error" not in anomaly_result:
+        for item in anomaly_result.get("anomalies", []):
+            sym = item.get("symbol", "")
+            if sym:
+                raw.append(sym)
+
+    if stop_event.is_set():
+        return []
+
+    volume_result = scan_volume_leaders(DEFAULT_UNIVERSE)
+    if "error" not in volume_result:
+        for item in volume_result.get("leaders", []):
+            sym = item.get("symbol", "")
+            if sym:
+                raw.append(sym)
+
+    with _lock:
+        held = set(_state.open_positions.keys()) | _state.pending_sells
+
+    seen: set = set()
+    candidates = []
+    for sym in raw:
+        if sym not in held and sym not in seen:
+            seen.add(sym)
+            candidates.append(sym)
+    return candidates
+
+
+def _score_candidates(candidates: list, stop_event: threading.Event) -> list:
+    """Score top-10 candidates. Returns [{ticker, score, price}] sorted score desc.
+
+    Uses the price returned by analyze_ticker to avoid a redundant get_price call.
+    """
+    scored = []
+    for sym in candidates[:10]:
+        if stop_event.is_set():
+            return scored
+        analysis = analyze_ticker(sym)
+        score = _get_composite_score(analysis)
+        if score < MIN_SCORE:
+            continue
+        price = analysis.get("price") if "error" not in analysis else None
+        if price and float(price) > 0:
+            scored.append({"ticker": sym, "score": score, "price": float(price)})
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored
+
+
+def _enter_positions(
+    portfolio_id: str,
+    scored: list,
+    high_vix: bool,
+    stop_event: threading.Event,
+) -> None:
+    """Enter up to MAX_POSITIONS using score-based cash allocation.
+
+    Tracks remaining_cash locally so each successive buy within the same
+    cycle uses updated (decremented) cash rather than the stale portfolio_cash.
+    """
+    with _lock:
+        remaining_cash = _state.portfolio_cash
+
+    for candidate in scored:
+        if stop_event.is_set():
+            return
+        with _lock:
+            if len(_state.open_positions) >= MAX_POSITIONS:
+                break
+
+        alloc_pct = _get_allocation_pct(candidate["score"], high_vix)
+        if alloc_pct == 0:
+            continue
+
+        shares = int(remaining_cash * alloc_pct / candidate["price"])
+        if shares < 1:
+            continue
+
+        result = execute_buy(portfolio_id, candidate["ticker"], shares)
+        if "error" not in result:
+            with _lock:
+                _state.open_positions[candidate["ticker"]] = {
+                    "entry_price": candidate["price"],
+                    "shares": shares,
+                    "entry_score": candidate["score"],
+                    "entry_time": datetime.now(),
+                    "current_price": candidate["price"],
+                    "current_score": candidate["score"],
+                    "allocation_pct": alloc_pct,
+                }
+                _state.trade_log.insert(0, {
+                    "time": datetime.now().strftime("%H:%M"),
+                    "action": "BUY",
+                    "ticker": candidate["ticker"],
+                    "price": candidate["price"],
+                    "shares": shares,
+                    "score": candidate["score"],
+                    "reason": f"score {candidate['score']:.0f} ({alloc_pct * 100:.0f}% cash)",
+                    "pnl": 0.0,
+                })
+            remaining_cash -= shares * candidate["price"]
+            logger.info(
+                "Bought %s: %d shares @ $%.2f (score %.0f)",
+                candidate["ticker"], shares, candidate["price"], candidate["score"],
+            )
+        else:
+            logger.warning("Buy failed for %s: %s", candidate["ticker"], result["error"])
+
+
+def _snapshot_portfolio(portfolio_id: str) -> None:
+    """Reconcile BotState cash/value from MCP server."""
+    result = analyze_portfolio(portfolio_id)
+    if "error" not in result:
+        portfolio_info = result.get("portfolio", {})
+        with _lock:
+            _state.portfolio_cash = portfolio_info.get("current_cash", _state.portfolio_cash)
+            _state.portfolio_value = result.get("total_value", _state.portfolio_value)
+            _state.total_pnl = _state.portfolio_value - 10_000.0
+    else:
+        logger.warning("Portfolio snapshot failed: %s", result["error"])
+
+
 def _run_cycle(portfolio_id: str, stop_event: threading.Event) -> None:
-    """Execute one full trading cycle. Implemented in Task 3."""
-    pass
+    """Execute one full trading cycle: regime → VIX → retries → exits → scan → score → enter → snapshot."""
+    logger.info("=== Cycle %d start ===", _state.cycle_count)
+
+    regime = detect_market_regime()
+    if "error" not in regime:
+        logger.info("Market regime: %s (score %s)", regime.get("regime"), regime.get("score"))
+
+    high_vix = _check_vix()
+    _retry_pending_sells(portfolio_id, stop_event)
+    if stop_event.is_set():
+        return
+    _check_exits(portfolio_id, stop_event)
+    if stop_event.is_set():
+        return
+    candidates = _scan_candidates(stop_event)
+    if candidates:
+        scored = _score_candidates(candidates, stop_event)
+        if not stop_event.is_set():
+            _enter_positions(portfolio_id, scored, high_vix, stop_event)
+    else:
+        logger.warning("All scans returned no candidates — skipping entry phase")
+    _snapshot_portfolio(portfolio_id)
 
 
 # ---------------------------------------------------------------------------
